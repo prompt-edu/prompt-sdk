@@ -3,7 +3,6 @@ package keycloakTokenVerifier
 import (
 	"net/url"
 
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -43,7 +42,7 @@ func InitKeycloakTokenVerifier(KeycloakURL, Realm, CoreURL string) error {
 	// init the middleware
 	err = InitKeycloakVerifier()
 	if err != nil {
-		logrus.Error("Failed to initialize keycloak verifier: ", err)
+		log.Error("Failed to initialize keycloak verifier: ", err)
 		return err
 	}
 	return nil

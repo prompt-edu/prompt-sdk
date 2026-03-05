@@ -18,7 +18,11 @@ func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, cours
 	if err != nil {
 		return keycloakTokenVerifierDTO.GetCourseRoles{}, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Error("failed to close response body:", closeErr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Error("Received non-OK response:", resp.Status)

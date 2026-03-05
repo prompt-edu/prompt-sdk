@@ -19,7 +19,11 @@ func SendIsStudentRequest(coreURL url.URL, authHeader string, coursePhaseID uuid
 	if err != nil {
 		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{}, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Error("failed to close response body:", closeErr)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		log.Info("Not student of course")

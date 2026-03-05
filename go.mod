@@ -13,6 +13,8 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0
 )
 
+require github.com/getsentry/sentry-go/logrus v0.43.0 // indirect
+
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
@@ -36,6 +38,7 @@ require (
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
+	github.com/getsentry/sentry-go v0.43.0
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

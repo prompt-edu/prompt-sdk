@@ -2,7 +2,7 @@ package promptSDK
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/ls1intum/prompt-sdk/keycloakTokenVerifier"
+	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier"
 )
 
 // Re-exporting role constants from keycloakTokenVerifier

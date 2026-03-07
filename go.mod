@@ -1,4 +1,4 @@
-module github.com/ls1intum/prompt-sdk
+module github.com/prompt-edu/prompt-sdk
 
 go 1.26
 

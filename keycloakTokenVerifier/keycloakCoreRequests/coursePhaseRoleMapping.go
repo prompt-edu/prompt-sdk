@@ -2,6 +2,7 @@ package keycloakCoreRequests
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -26,7 +27,7 @@ func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, cours
 
 	if resp.StatusCode != http.StatusOK {
 		log.Error("Received non-OK response:", resp.Status)
-		return keycloakTokenVerifierDTO.GetCourseRoles{}, nil
+		return keycloakTokenVerifierDTO.GetCourseRoles{}, fmt.Errorf("course phase role mapping request failed with status %d: %s", resp.StatusCode, resp.Status)
 	}
 
 	var authResponse keycloakTokenVerifierDTO.GetCourseRoles

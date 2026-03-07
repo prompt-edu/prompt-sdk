@@ -12,7 +12,7 @@ A lightweight Go SDK for building Prompt services.
 
 ## Installation
 
-Install via your Go module tooling (module path: github.com/ls1intum/prompt-sdk). Go 1.24+ is required.
+Install via your Go module tooling (module path: github.com/prompt-edu/prompt-sdk). Go 1.26+ is required.
 
 ## Usage overview (high level)
 

@@ -11,7 +11,6 @@ func MockAuthMiddlewareWithEmail(mockRoles []string, email, matriculationNumber,
 		for _, role := range mockRoles {
 			userRoles[role] = true
 		}
-		// Store the roles map in the context
 		c.Set("userRoles", userRoles)
 		c.Set("userEmail", email)
 		c.Set("matriculationNumber", matriculationNumber)

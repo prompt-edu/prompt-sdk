@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/ls1intum/prompt-sdk/utils"
+	"github.com/prompt-edu/prompt-sdk/utils"
 )
 
 func CORSMiddleware(clientHost string) gin.HandlerFunc {

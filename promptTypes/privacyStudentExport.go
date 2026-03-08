@@ -27,8 +27,8 @@ func RegisterStudentExportEndpoint(router *gin.RouterGroup, authMiddleware gin.H
 
 		res, errExport := handler.HandleExportStudentData(c, req)
 		if errExport != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": errExport.Error()})
-			return
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+      return
 		}
 
 		c.JSON(http.StatusOK, res)

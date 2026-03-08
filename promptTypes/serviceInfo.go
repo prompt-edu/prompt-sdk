@@ -9,16 +9,6 @@ import (
 // Capability key constants — use these when populating ServiceInfo.Capabilities
 // to avoid typos and get IDE support.
 const (
-	// CapabilityPrivacyStudentExport indicates support for assembling and returning all
-	// data associated with a student for GDPR export purposes.
-	// Expected endpoint: GET /api/privacy/student-export/:studentID
-	CapabilityPrivacyStudentExport = "privacy.studentExport"
-
-	// CapabilityPrivacyStudentDeletion indicates support for deleting all data
-	// associated with a student on GDPR deletion request.
-	// Expected endpoint: DELETE /api/privacy/student/:studentID
-	CapabilityPrivacyStudentDeletion = "privacy.studentDeletion"
-
 	// CapabilityPhaseCopy indicates support for copying course phase data
 	// from a source phase to a target phase.
 	// Expected endpoint: POST .../course_phase/:coursePhaseID/copy
@@ -28,6 +18,16 @@ const (
 	// status of a course phase.
 	// Expected endpoint: GET .../course_phase/:coursePhaseID/config
 	CapabilityPhaseConfig = "phase.config"
+
+	// CapabilityPrivacyStudentExport indicates support for assembling and returning all
+	// data associated with a student for GDPR export purposes.
+	// Expected endpoint: GET /api/privacy/student-export/:studentID
+	CapabilityPrivacyStudentExport = "privacy.studentExport"
+
+	// CapabilityPrivacyStudentDeletion indicates support for deleting all data
+	// associated with a student on GDPR deletion request.
+	// Expected endpoint: DELETE /api/privacy/student/:studentID
+	CapabilityPrivacyStudentDeletion = "privacy.studentDeletion"
 )
 
 // ServiceInfo describes a course phase microservice — its identity, health, and capabilities.

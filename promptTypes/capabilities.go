@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Capability key constants — use these when populating ServiceCapabilities.Capabilities
+// Capability key constants — use these when populating ServiceInfo.Capabilities
 // to avoid typos and get IDE support.
 const (
 	// CapabilityPrivacyStudentExport indicates support for assembling and returning all
@@ -30,17 +30,18 @@ const (
 	CapabilityPhaseConfig = "phase.config"
 )
 
-// ServiceCapabilities describes what a course phase microservice supports.
-// It is returned by the GET /api/capabilities endpoint and used by the core
-// system and admin dashboard to determine service health and available features.
+// ServiceInfo describes a course phase microservice — its identity, health, and capabilities.
+// It is returned by the GET /api/info endpoint and used by the core system and admin
+// dashboard to determine service status and available features.
 //
 // Populate Capabilities using the Capability* constants defined in this package.
 // Any capability key that is absent is treated as false (not supported) by consumers.
-type ServiceCapabilities struct {
+type ServiceInfo struct {
 	// ServiceName is the human-readable name of the microservice (e.g. "interview").
 	ServiceName string `json:"serviceName"`
 
-	// Version is the deployed version or git SHA of the service. Optional.
+	// Version is the deployed version or image tag of the service. Optional.
+	// Set this from the SERVER_IMAGE_TAG environment variable.
 	Version string `json:"version,omitempty"`
 
 	// Healthy reports whether the service is fully operational at the time of the request.
@@ -52,38 +53,37 @@ type ServiceCapabilities struct {
 	Capabilities map[string]bool `json:"capabilities"`
 }
 
-// RegisterCapabilitiesEndpoint registers a public GET /capabilities route on the given
-// router group. The static fields of caps are returned as-is; the Healthy field is
-// determined dynamically by calling healthCheck on every request.
+// RegisterInfoEndpoint registers a public GET /info route on the given router group.
+// The static fields of info are returned as-is; the Healthy field is determined
+// dynamically by calling healthCheck on every request.
 //
 // Pass nil for healthCheck to always report healthy: true.
 //
 // Example registration (in a microservice's main.go):
 //
 //	baseApi := router.Group("interview/api")
-//	promptTypes.RegisterCapabilitiesEndpoint(baseApi, promptTypes.ServiceCapabilities{
+//	promptTypes.RegisterInfoEndpoint(baseApi, promptTypes.ServiceInfo{
 //	    ServiceName: "interview",
+//	    Version:     promptSDK.GetEnv("SERVER_IMAGE_TAG", ""),
 //	    Capabilities: map[string]bool{
-//	        promptTypes.CapabilityPrivacyStudentExport:   true,
-//	        promptTypes.CapabilityPrivacyStudentDeletion: true,
-//	        promptTypes.CapabilityPhaseCopy:              true,
-//	        promptTypes.CapabilityPhaseConfig:            true,
+//	        promptTypes.CapabilityPhaseCopy:   true,
+//	        promptTypes.CapabilityPhaseConfig: true,
 //	    },
 //	}, func() bool {
 //	    return conn.Ping(context.Background()) == nil
 //	})
-func RegisterCapabilitiesEndpoint(router *gin.RouterGroup, caps ServiceCapabilities, healthCheck func() bool) {
-	router.GET("/capabilities", func(c *gin.Context) {
+func RegisterInfoEndpoint(router *gin.RouterGroup, info ServiceInfo, healthCheck func() bool) {
+	router.GET("/info", func(c *gin.Context) {
 		healthy := true
 		if healthCheck != nil {
 			healthy = healthCheck()
 		}
 
-		c.JSON(http.StatusOK, ServiceCapabilities{
-			ServiceName:  caps.ServiceName,
-			Version:      caps.Version,
+		c.JSON(http.StatusOK, ServiceInfo{
+			ServiceName:  info.ServiceName,
+			Version:      info.Version,
 			Healthy:      healthy,
-			Capabilities: caps.Capabilities,
+			Capabilities: info.Capabilities,
 		})
 	})
 }

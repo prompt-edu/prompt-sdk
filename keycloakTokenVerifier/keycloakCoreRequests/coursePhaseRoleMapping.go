@@ -7,7 +7,7 @@ import (
 	"path"
 
 	"github.com/google/uuid"
-	"github.com/ls1intum/prompt-sdk/keycloakTokenVerifier/keycloakTokenVerifierDTO"
+	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier/keycloakTokenVerifierDTO"
 	log "github.com/sirupsen/logrus"
 )
 

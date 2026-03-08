@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/ls1intum/prompt-sdk/keycloakTokenVerifier/keycloakCoreRequests"
+	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier/keycloakCoreRequests"
 	log "github.com/sirupsen/logrus"
 )
 

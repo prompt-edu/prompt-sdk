@@ -18,7 +18,7 @@ type StudentExportRequest struct {
 
 	// PreSignedURL is an S3 presigned PUT URL the microservice must upload the zip to.
 	// The object key (file name) and expiry are already encoded in this URL by the core.
-	PreSignedURL string `json:"preSignedURL"`
+	PreSignedURL string `json:"preSignedURL" binding:"required,url"`
 }
 
 // StudentExportHandler defines the interface that microservices must implement to
@@ -54,7 +54,7 @@ func RegisterStudentExportEndpoint(router *gin.RouterGroup, authMiddleware gin.H
 		}
 
 		if err := handler.HandleExportStudentData(c, req); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 

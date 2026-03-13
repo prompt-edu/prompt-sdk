@@ -41,7 +41,7 @@ func RegisterStudentDeletionEndpoint(router *gin.RouterGroup, authMiddleware gin
 		}
 
 		if err := handler.HandleDeleteStudentData(c, req); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 

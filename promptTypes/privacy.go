@@ -22,19 +22,19 @@ import (
 type SubjectIdentifiers struct {
 	// UserID is the platform-wide unique identifier of the user account.
 	// Always present regardless of subject type.
-	UserID uuid.UUID `json:"userId" binding:"required"`
+	UserID uuid.UUID `json:"userID" binding:"required"`
 
 	// StudentID is the unique identifier of the student record.
 	// Only set for student subjects — uuid.Nil indicates a platform user with no student record.
-	StudentID uuid.UUID `json:"studentId"`
+	StudentID uuid.UUID `json:"studentID"`
 
 	// CourseParticipationIDs lists the IDs of all course participations belonging to the student.
 	// Only populated for student subjects — empty for platform users.
-	CourseParticipationIDs []uuid.UUID `json:"courseParticipationIds"`
+	CourseParticipationIDs []uuid.UUID `json:"courseParticipationIDs"`
 
 	// CoursePhaseParticipationIDs lists the IDs of all course phase participations belonging to the student.
 	// Only populated for student subjects — empty for platform users.
-	CoursePhaseParticipationIDs []uuid.UUID `json:"coursePhaseParticipationIds"`
+	CoursePhaseParticipationIDs []uuid.UUID `json:"coursePhaseParticipationIDs"`
 }
 
 // Privacy route constants used when registering endpoints via RegisterStudentExportEndpoint

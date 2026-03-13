@@ -13,7 +13,7 @@ import (
 //
 //   - Student: a person who participates in courses. All fields are populated —
 //     StudentID, CourseParticipationIDs, and CoursePhaseParticipationIDs are
-//     guaranteed to be non-nil and should be used to scope data access.
+//     guaranteed to be non-empty and should be used to scope data access.
 //
 //   - Platform user: a person with a platform role such as lecturer, course editor,
 //     or administrator who has no student record. Only UserID is guaranteed to be

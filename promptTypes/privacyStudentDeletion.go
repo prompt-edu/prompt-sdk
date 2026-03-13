@@ -7,11 +7,12 @@ import (
 )
 
 // StudentDeletionHandler defines the interface that microservices must implement to
-// support GDPR-compliant student data deletion. The implementation is responsible for
-// permanently removing all data associated with the identified student from the
-// microservice's own storage.
+// support GDPR-compliant data deletion. The implementation is responsible for
+// permanently removing all data associated with the identified subject from the
+// microservice's own storage. Implementations should treat the case where no data
+// exists for the subject as a success (idempotent behavior).
 type StudentDeletionHandler interface {
-	// HandleDeleteStudentData permanently deletes all data belonging to the identified student.
+	// HandleDeleteStudentData permanently deletes all data belonging to the identified subject.
 	// Returns an error if the deletion could not be completed.
 	HandleDeleteStudentData(c *gin.Context, req SubjectIdentifiers) error
 }

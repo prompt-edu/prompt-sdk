@@ -13,8 +13,8 @@ import (
 // microservice side — the presigned URL grants time-limited write access to a
 // specific S3 object whose key is determined by the core server at generation time.
 type StudentExportRequest struct {
-	// SubjectIdentifiers contains all IDs needed to scope the export to one subject.
-	SubjectIdentifiers SubjectIdentifiers `json:"subject"`
+	// Subject contains all IDs needed to scope the export to one subject.
+	Subject SubjectIdentifiers `json:"subject"`
 
 	// PreSignedURL is an S3 presigned PUT URL the microservice must upload the zip to.
 	// The object key (file name) and expiry are already encoded in this URL by the core.

@@ -17,6 +17,13 @@ type StudentDeletionHandler interface {
 	HandleDeleteStudentData(c *gin.Context, req SubjectIdentifiers) error
 }
 
+// StudentDeletionRequest wraps the subject identifiers for deletion requests.
+// This mirrors the structure used by other privacy-related endpoints, where the
+// subject identifiers are nested under a top-level "subject" field.
+type StudentDeletionRequest struct {
+	Subject SubjectIdentifiers `json:"subject" binding:"required"`
+}
+
 // RegisterStudentDeletionEndpoint registers the standardized POST endpoint for student data deletion.
 // The core server calls this endpoint on each microservice when a student data deletion is requested.
 //
@@ -34,13 +41,13 @@ type StudentDeletionHandler interface {
 //   - handler: Implementation of StudentDeletionHandler that performs the actual deletion
 func RegisterStudentDeletionEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler StudentDeletionHandler) {
 	router.POST(PrivacyRouteStudentDataDeletion, authMiddleware, func(c *gin.Context) {
-		var req SubjectIdentifiers
+		var req StudentDeletionRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		if err := handler.HandleDeleteStudentData(c, req); err != nil {
+		if err := handler.HandleDeleteStudentData(c, req.Subject); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

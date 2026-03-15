@@ -31,10 +31,6 @@ type SubjectIdentifiers struct {
 	// CourseParticipationIDs lists the IDs of all course participations belonging to the student.
 	// Only populated for student subjects — empty for platform users.
 	CourseParticipationIDs []uuid.UUID `json:"courseParticipationIDs"`
-
-	// CoursePhaseParticipationIDs lists the IDs of all course phase participations belonging to the student.
-	// Only populated for student subjects — empty for platform users.
-	CoursePhaseParticipationIDs []uuid.UUID `json:"coursePhaseParticipationIDs"`
 }
 
 // Privacy route constants used when registering endpoints via RegisterStudentExportEndpoint

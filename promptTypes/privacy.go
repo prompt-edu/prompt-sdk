@@ -12,7 +12,7 @@ import (
 // There are two kinds of subjects:
 //
 //   - Student: a person who participates in courses. All fields are populated —
-//     StudentID, CourseParticipationIDs, and CoursePhaseParticipationIDs are
+//     StudentID and CourseParticipationIDs are
 //     guaranteed to be non-empty and should be used to scope data access.
 //
 //   - Platform user: a person with a platform role such as lecturer, course editor,

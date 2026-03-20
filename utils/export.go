@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 // Export assembles data items into a ZIP archive backed by a temporary file.
@@ -49,6 +51,15 @@ func NewExport() (*Export, error) {
 	}, nil
 }
 
+// validateZipPath ensures the path is relative and contains no traversal segments.
+func validateZipPath(path string) error {
+	cleaned := filepath.ToSlash(filepath.Clean(path))
+	if filepath.IsAbs(path) || strings.HasPrefix(cleaned, "..") {
+		return fmt.Errorf("invalid zip entry path: %q", path)
+	}
+	return nil
+}
+
 // Err returns the first error that occurred during any Add* call.
 func (e *Export) Err() error {
 	return e.err
@@ -62,15 +73,14 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 		return
 	}
 
-	v, err := fn()
-	if err != nil {
-		e.err = fmt.Errorf("collecting %q: %w", name, err)
+	if err := validateZipPath(path); err != nil {
+		e.err = err
 		return
 	}
 
-	data, err := json.MarshalIndent(v, "", "  ")
+	v, err := fn()
 	if err != nil {
-		e.err = fmt.Errorf("marshaling %q: %w", name, err)
+		e.err = fmt.Errorf("collecting %q: %w", name, err)
 		return
 	}
 
@@ -80,8 +90,10 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 		return
 	}
 
-	if _, err := w.Write(data); err != nil {
-		e.err = fmt.Errorf("writing %q: %w", name, err)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		e.err = fmt.Errorf("marshaling %q: %w", name, err)
 	}
 }
 
@@ -90,6 +102,11 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 // this is a no-op.
 func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 	if e.err != nil {
+		return
+	}
+
+	if err := validateZipPath(path); err != nil {
+		e.err = err
 		return
 	}
 
@@ -116,6 +133,11 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 // this is a no-op.
 func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 	if e.err != nil {
+		return
+	}
+
+	if err := validateZipPath(path); err != nil {
+		e.err = err
 		return
 	}
 
@@ -173,15 +195,19 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(body))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("upload failed with status %s (%d): %s", resp.Status, resp.StatusCode, string(body))
 	}
 
 	return nil
 }
 
-// Close cleans up the temporary file. Safe to call multiple times.
+// Close cleans up resources. Safe to call multiple times.
 func (e *Export) Close() {
+	if e.zipWriter != nil {
+		_ = e.zipWriter.Close()
+		e.zipWriter = nil
+	}
 	if e.tmpFile != nil {
 		_ = e.tmpFile.Close()
 		_ = os.Remove(e.tmpFile.Name())

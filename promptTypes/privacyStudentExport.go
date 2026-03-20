@@ -4,15 +4,12 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prompt-edu/prompt-sdk/utils"
 )
 
-// StudentExportRequest is the payload the core server sends to each microservice
-// to trigger a student data export. The microservice must collect all data belonging
-// to the identified subject, package it into a zip file, and upload it via a simple
-// HTTP PUT to the provided presigned URL. No AWS credentials are required on the
-// microservice side — the presigned URL grants time-limited write access to a
-// specific S3 object whose key is determined by the core server at generation time.
-type StudentExportRequest struct {
+// PrivacyDataExportRequest is the payload the core server sends to each microservice
+// to trigger a privacy data export.
+type PrivacyDataExportRequest struct {
 	// Subject contains all IDs needed to scope the export to one subject.
 	Subject SubjectIdentifiers `json:"subject"`
 
@@ -21,43 +18,64 @@ type StudentExportRequest struct {
 	PreSignedURL string `json:"preSignedURL" binding:"required,url"`
 }
 
-// StudentExportHandler defines the interface that microservices must implement to
-// support GDPR-compliant data exports. The implementation is responsible for
-// collecting all subject-related data, creating a zip archive, and uploading it to S3
-// via the presigned URL provided in the request.
-type StudentExportHandler interface {
-	// HandleExportStudentData collects and uploads the subject's data to the presigned URL.
-	// Returns an error if the export or upload failed.
-	HandleExportStudentData(c *gin.Context, req StudentExportRequest) error
+// PrivacyDataExportHandler defines the interface that microservices must implement to
+// support GDPR-compliant data exports. The implementation receives a pre-initialized
+// Export and simply adds items to it — the SDK handles ZIP creation, upload, and cleanup.
+//
+// Example implementation:
+//
+//	func (h *myHandler) HandlePrivacyExportData(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error {
+//	    exp.AddJSON("User record", "user-record.json", func() (any, error) {
+//	        return user.GetUserByID(c, subject.UserID)
+//	    })
+//	    return nil
+//	}
+type PrivacyDataExportHandler interface {
+	// HandlePrivacyExportData adds the subject's data to the provided export.
+	// The SDK creates the export, calls this method, then uploads and cleans up.
+	HandlePrivacyExportData(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error
 }
 
-// RegisterStudentExportEndpoint registers the standardized POST endpoint for student data exports.
-// The core server calls this endpoint on each microservice when a student data export is requested.
+// RegisterPrivacyDataExportEndpoint registers the standardized POST endpoint for privacy data exports.
+// The core server calls this endpoint on each microservice when a privacy data export is requested.
 //
-// The endpoint handles:
+// The endpoint handles the full export lifecycle:
 //   - JSON request parsing and validation
 //   - Authentication through the provided middleware
-//   - Error handling and standardized responses
-//
-// Example endpoint path: POST /my-service/api/privacy/student-data-export
+//   - Creating the export archive
+//   - Calling the handler to populate it
+//   - Uploading the archive to the presigned S3 URL
+//   - Cleaning up temporary files
 //
 // Parameters:
 //   - router: The Gin router group where the endpoint will be registered
 //   - authMiddleware: Authentication middleware to protect the endpoint
-//   - handler: Implementation of StudentExportHandler that performs the actual export and upload
-func RegisterStudentExportEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler StudentExportHandler) {
-	router.POST(PrivacyRouteStudentDataExport, authMiddleware, func(c *gin.Context) {
-		var req StudentExportRequest
-		if errRead := c.ShouldBindJSON(&req); errRead != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errRead.Error()})
+//   - handler: Implementation of PrivacyDataExportHandler that populates the export
+func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler PrivacyDataExportHandler) {
+	router.POST(PrivacyRouteDataExport, authMiddleware, func(c *gin.Context) {
+		var req PrivacyDataExportRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		if err := handler.HandleExportStudentData(c, req); err != nil {
+		exp, err := utils.NewExport()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer exp.Close()
+
+		if err := handler.HandlePrivacyExportData(c, exp, req.Subject); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"success": "Student data export completed"})
+		if err := exp.UploadTo(c.Request.Context(), req.PreSignedURL); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"success": "Privacy data export completed"})
 	})
 }

@@ -33,12 +33,12 @@ type SubjectIdentifiers struct {
 	CourseParticipationIDs []uuid.UUID `json:"courseParticipationIDs"`
 }
 
-// Privacy route constants used when registering endpoints via RegisterStudentExportEndpoint
-// and RegisterStudentDeletionEndpoint.
+// Privacy route constants used when registering endpoints via RegisterPrivacyDataExportEndpoint
+// and RegisterPrivacyDataDeletionEndpoint.
 const (
-	// PrivacyRouteStudentDataExport is the POST endpoint path for triggering a student data export.
-	PrivacyRouteStudentDataExport string = "/privacy/student-data-export"
+	// PrivacyRouteDataExport is the POST endpoint path for triggering a privacy data export.
+	PrivacyRouteDataExport string = "/privacy/data-export"
 
-	// PrivacyRouteStudentDataDeletion is the POST endpoint path for triggering a student data deletion.
-	PrivacyRouteStudentDataDeletion string = "/privacy/student-data-deletion"
+	// PrivacyRouteDataDeletion is the POST endpoint path for triggering a privacy data deletion.
+	PrivacyRouteDataDeletion string = "/privacy/data-deletion"
 )

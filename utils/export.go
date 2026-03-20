@@ -125,7 +125,7 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 		return
 	}
 	if closer, ok := r.(io.Closer); ok {
-		defer closer.Close()
+		defer func() { _ = closer.Close() }()
 	}
 
 	w, err := e.zipWriter.Create(path)
@@ -170,7 +170,7 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 	if err != nil {
 		return fmt.Errorf("uploading export: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(resp.Body)
@@ -183,8 +183,8 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 // Close cleans up the temporary file. Safe to call multiple times.
 func (e *Export) Close() {
 	if e.tmpFile != nil {
-		e.tmpFile.Close()
-		os.Remove(e.tmpFile.Name())
+		_ = e.tmpFile.Close()
+		_ = os.Remove(e.tmpFile.Name())
 		e.tmpFile = nil
 	}
 }

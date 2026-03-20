@@ -18,23 +18,19 @@ type PrivacyDataExportRequest struct {
 	PreSignedURL string `json:"preSignedURL" binding:"required,url"`
 }
 
-// PrivacyDataExportHandler defines the interface that microservices must implement to
-// support GDPR-compliant data exports. The implementation receives a pre-initialized
-// Export and simply adds items to it — the SDK handles ZIP creation, upload, and cleanup.
+// PrivacyDataExportHandler is called by the SDK to populate a privacy data export.
+// The implementation receives a pre-initialized Export and simply adds items to it —
+// the SDK handles ZIP creation, upload, and cleanup.
 //
-// Example implementation:
+// Example:
 //
-//	func (h *myHandler) HandlePrivacyExportData(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error {
+//	func(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error {
 //	    exp.AddJSON("User record", "user-record.json", func() (any, error) {
-//	        return user.GetUserByID(c, subject.UserID)
+//	        return db.GetUserByID(c, subject.UserID)
 //	    })
 //	    return nil
 //	}
-type PrivacyDataExportHandler interface {
-	// HandlePrivacyExportData adds the subject's data to the provided export.
-	// The SDK creates the export, calls this method, then uploads and cleans up.
-	HandlePrivacyExportData(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error
-}
+type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error
 
 // RegisterPrivacyDataExportEndpoint registers the standardized POST endpoint for privacy data exports.
 // The core server calls this endpoint on each microservice when a privacy data export is requested.
@@ -66,7 +62,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 		}
 		defer exp.Close()
 
-		if err := handler.HandlePrivacyExportData(c, exp, req.Subject); err != nil {
+		if err := handler(c, exp, req.Subject); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

@@ -177,6 +177,7 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 	if err := e.zipWriter.Close(); err != nil {
 		return fmt.Errorf("closing zip: %w", err)
 	}
+	e.zipWriter = nil
 
 	if _, err := e.tmpFile.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("seeking temp file: %w", err)

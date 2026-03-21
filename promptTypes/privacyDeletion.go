@@ -48,7 +48,7 @@ func RegisterPrivacyDataDeletionEndpoint(router *gin.RouterGroup, authMiddleware
 		}
 
 		if err := handler.HandlePrivacyDeleteData(c, req.Subject); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process deletion"})
 			return
 		}
 

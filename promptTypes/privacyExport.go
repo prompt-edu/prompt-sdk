@@ -79,18 +79,18 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 
 		exp, err := utils.NewExport()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create export"})
 			return
 		}
 		defer exp.Close()
 
 		if err := handler(c, exp, req.Subject); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process export"})
 			return
 		}
 
 		if err := exp.UploadTo(c.Request.Context(), req.PreSignedURL); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to upload export"})
 			return
 		}
 

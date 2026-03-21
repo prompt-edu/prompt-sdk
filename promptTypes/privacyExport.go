@@ -101,7 +101,9 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 // isAllowedHost checks if the host matches any entry in the allowlist.
 // Entries starting with "*." match any subdomain (e.g. "*.amazonaws.com" matches "s3.amazonaws.com").
 func isAllowedHost(host string, allowed []string) bool {
+	host = strings.ToLower(host)
 	for _, a := range allowed {
+		a = strings.ToLower(a)
 		if strings.HasPrefix(a, "*.") {
 			if strings.HasSuffix(host, a[1:]) {
 				return true

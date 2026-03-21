@@ -61,14 +61,14 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 
 		parsed, err := url.Parse(req.PreSignedURL)
 		if err != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": "invalid upload URL"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid upload URL"})
 			return
 		}
 
 		host := parsed.Hostname()
 		isLocal := host == "localhost" || host == "127.0.0.1"
 		if parsed.Scheme != "https" && !isLocal {
-			c.JSON(http.StatusForbidden, gin.H{"error": "upload URL must use HTTPS"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "upload URL must use HTTPS"})
 			return
 		}
 

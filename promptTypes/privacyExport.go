@@ -2,6 +2,8 @@ package promptTypes
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prompt-edu/prompt-sdk/utils"
@@ -47,11 +49,31 @@ type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject Su
 //   - router: The Gin router group where the endpoint will be registered
 //   - authMiddleware: Authentication middleware to protect the endpoint
 //   - handler: Implementation of PrivacyDataExportHandler that populates the export
-func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler PrivacyDataExportHandler) {
+//   - allowedUploadHosts: List of allowed hosts for the presigned upload URL.
+//     If nil or empty, all hosts are allowed.
+func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler PrivacyDataExportHandler, allowedUploadHosts []string) {
 	router.POST(PrivacyRouteDataExport, authMiddleware, func(c *gin.Context) {
 		var req PrivacyDataExportRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		parsed, err := url.Parse(req.PreSignedURL)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "invalid upload URL"})
+			return
+		}
+
+		host := parsed.Hostname()
+		isLocal := host == "localhost" || host == "127.0.0.1"
+		if parsed.Scheme != "https" && !isLocal {
+			c.JSON(http.StatusForbidden, gin.H{"error": "upload URL must use HTTPS"})
+			return
+		}
+
+		if len(allowedUploadHosts) > 0 && !isAllowedHost(parsed.Host, allowedUploadHosts) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "upload URL host not allowed"})
 			return
 		}
 
@@ -74,4 +96,19 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 
 		c.JSON(http.StatusOK, gin.H{"success": "Privacy data export completed"})
 	})
+}
+
+// isAllowedHost checks if the host matches any entry in the allowlist.
+// Entries starting with "*." match any subdomain (e.g. "*.amazonaws.com" matches "s3.amazonaws.com").
+func isAllowedHost(host string, allowed []string) bool {
+	for _, a := range allowed {
+		if strings.HasPrefix(a, "*.") {
+			if strings.HasSuffix(host, a[1:]) {
+				return true
+			}
+		} else if host == a {
+			return true
+		}
+	}
+	return false
 }

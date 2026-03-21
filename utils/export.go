@@ -8,8 +8,9 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
+	"time"
 )
 
 // Export assembles data items into a ZIP archive backed by a temporary file.
@@ -51,13 +52,15 @@ func NewExport() (*Export, error) {
 	}, nil
 }
 
-// validateZipPath ensures the path is relative and contains no traversal segments.
-func validateZipPath(path string) error {
-	cleaned := filepath.ToSlash(filepath.Clean(path))
-	if filepath.IsAbs(path) || strings.HasPrefix(cleaned, "..") {
-		return fmt.Errorf("invalid zip entry path: %q", path)
+// sanitizeZipPath normalizes and validates the path for use in a ZIP entry.
+// Returns the cleaned path using forward slashes, or an error if the path
+// is absolute or contains traversal segments.
+func sanitizeZipPath(p string) (string, error) {
+	cleaned := path.Clean(strings.ReplaceAll(p, "\\", "/"))
+	if cleaned == "." || path.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
+		return "", fmt.Errorf("invalid zip entry path: %q", p)
 	}
-	return nil
+	return cleaned, nil
 }
 
 // Err returns the first error that occurred during any Add* call.
@@ -73,7 +76,8 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 		return
 	}
 
-	if err := validateZipPath(path); err != nil {
+	cleanPath, err := sanitizeZipPath(path)
+	if err != nil {
 		e.err = err
 		return
 	}
@@ -84,9 +88,9 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 		return
 	}
 
-	w, err := e.zipWriter.Create(path)
+	w, err := e.zipWriter.Create(cleanPath)
 	if err != nil {
-		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, path, err)
+		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, cleanPath, err)
 		return
 	}
 
@@ -105,7 +109,8 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 		return
 	}
 
-	if err := validateZipPath(path); err != nil {
+	cleanPath, err := sanitizeZipPath(path)
+	if err != nil {
 		e.err = err
 		return
 	}
@@ -116,9 +121,9 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 		return
 	}
 
-	w, err := e.zipWriter.Create(path)
+	w, err := e.zipWriter.Create(cleanPath)
 	if err != nil {
-		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, path, err)
+		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, cleanPath, err)
 		return
 	}
 
@@ -136,7 +141,8 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 		return
 	}
 
-	if err := validateZipPath(path); err != nil {
+	cleanPath, err := sanitizeZipPath(path)
+	if err != nil {
 		e.err = err
 		return
 	}
@@ -150,9 +156,9 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 		defer func() { _ = closer.Close() }()
 	}
 
-	w, err := e.zipWriter.Create(path)
+	w, err := e.zipWriter.Create(cleanPath)
 	if err != nil {
-		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, path, err)
+		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, cleanPath, err)
 		return
 	}
 
@@ -188,7 +194,8 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 	req.Header.Set("Content-Type", "application/zip")
 	req.ContentLength = stat.Size()
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("uploading export: %w", err)
 	}

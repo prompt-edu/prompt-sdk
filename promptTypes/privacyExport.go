@@ -72,7 +72,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 			return
 		}
 
-		if len(allowedUploadHosts) > 0 && !isAllowedHost(parsed.Host, allowedUploadHosts) {
+		if len(allowedUploadHosts) > 0 && !isAllowedHost(host, allowedUploadHosts) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "upload URL host not allowed"})
 			return
 		}

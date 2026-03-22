@@ -122,14 +122,12 @@ func newTestServer( t *testing.T, received *[]byte) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPut, r.Method)
 		require.Equal(t, "/", r.URL.Path)
-
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
-		defer r.Body.Close()
-
 		*received = body
-
 		w.WriteHeader(http.StatusOK)
+    err = r.Body.Close()
+    require.NoError(t, err)
 	}))
 }
 

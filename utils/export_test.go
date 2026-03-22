@@ -50,41 +50,41 @@ func TestExportCreation(t *testing.T) {
 	require.IsType(t, &Export{}, exp)
 }
 
-func setupExportEmpty(t *testing.T) (context.Context, *Export) {
+func setupExportEmpty(t *testing.T) (*Export) {
 	exp, err := NewExport()
 	require.NoError(t, err)
-	c := context.Background()
 	t.Cleanup(exp.Close)
-	return c, exp
+	return exp
 }
 
-func setupExportOneJSONEntry(t *testing.T) (context.Context, *Export) {
-	c, exp := setupExportEmpty(t)
+func setupExportOneJSONEntry(t *testing.T) (*Export) {
+	exp := setupExportEmpty(t)
 	exp.AddJSON("_", EXAMPLE_JSON_FILENAME, func() (any, error) {
 		return EXAMPLE_JSON_STRUCT, nil
 	})
-	return c, exp
+	return exp
 }
 
-func setupExportOneBlobEntry(t *testing.T) (context.Context, *Export) {
-	c, exp := setupExportEmpty(t)
+func setupExportOneBlobEntry(t *testing.T) (*Export) {
+	exp := setupExportEmpty(t)
 	exp.AddBlob("_", EXAMPLE_BLOB_FILENAME, func() ([]byte, error) {
 		return EXAMPLE_BLOB_CONTENT, nil
 	})
-	return c, exp
+	return exp
 }
 
-func setupExportOneFileEntry(t *testing.T) (context.Context, *Export) {
-	c, exp := setupExportEmpty(t)
+func setupExportOneFileEntry(t *testing.T) (*Export) {
+	exp := setupExportEmpty(t)
 	exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
 		return bytes.NewReader(EXAMPLE_BLOB_CONTENT), nil
 	})
-	return c, exp
+	return exp
 }
 
 func TestErrorInvalidURL(t *testing.T) {
 	invalid_url := "https:// invalid-url"
-	c, exp := setupExportOneJSONEntry(t)
+	exp := setupExportOneJSONEntry(t)
+  c := context.Background()
 	err := exp.UploadTo(c, invalid_url)
 	require.Error(t, err)
 }
@@ -94,7 +94,8 @@ func TestErrorEmptyZip(t *testing.T) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 	}))
 	t.Cleanup(server.Close)
-	c, exp := setupExportEmpty(t)
+	exp := setupExportEmpty(t)
+  c := context.Background()
 	err := exp.UploadTo(c, server.URL)
 	require.Error(t, err)
 }
@@ -133,9 +134,9 @@ func TestUploadJSONZIP(t *testing.T) {
 	var received []byte
 	server := newTestServer(t, &received)
 
-	c, exp := setupExportOneJSONEntry(t)
+	exp := setupExportOneJSONEntry(t)
 
-	err := exp.UploadTo(c, server.URL)
+	err := exp.UploadTo(context.Background(), server.URL)
 	require.NoError(t, err)
 
 	content := readZipEntry(t, received, EXAMPLE_JSON_FILENAME)
@@ -148,9 +149,9 @@ func TestUploadBlobZIP(t *testing.T) {
 	var received []byte
 	server := newTestServer(t, &received)
 
-	c, exp := setupExportOneBlobEntry(t)
+	exp := setupExportOneBlobEntry(t)
 
-	err := exp.UploadTo(c, server.URL)
+	err := exp.UploadTo(context.Background(), server.URL)
 	require.NoError(t, err)
 
 	content := readZipEntry(t, received, EXAMPLE_BLOB_FILENAME)
@@ -161,9 +162,9 @@ func TestUploadFileZIP(t *testing.T) {
 	var received []byte
 	server := newTestServer(t, &received)
 
-	c, exp := setupExportOneFileEntry(t)
+	exp := setupExportOneFileEntry(t)
 
-	err := exp.UploadTo(c, server.URL)
+	err := exp.UploadTo(context.Background(), server.URL)
 	require.NoError(t, err)
 
 	content := readZipEntry(t, received, EXAMPLE_BLOB_FILENAME)
@@ -181,8 +182,7 @@ func (t *testReader) Close() error {
 }
 
 func TestAddFileClosesReader(t *testing.T) {
-	exp, err := NewExport()
-	require.NoError(t, err)
+  exp := setupExportEmpty(t)
 
 	tr := &testReader{
 		Reader: bytes.NewReader(EXAMPLE_BLOB_CONTENT),
@@ -211,9 +211,9 @@ func TestAddAfterUploadReturnsError(t *testing.T) {
 	var received []byte
 	server := newTestServer(t, &received)
 
-	c, exp := setupExportOneJSONEntry(t)
+	exp := setupExportOneJSONEntry(t)
 
-	err := exp.UploadTo(c, server.URL)
+	err := exp.UploadTo(context.Background(), server.URL)
 	require.NoError(t, err)
 
 	exp.AddJSON("late", "late.json", func() (any, error) {
@@ -226,7 +226,8 @@ func TestUploadAfterUploadReturnsError(t *testing.T) {
 	var received []byte
 	server := newTestServer(t, &received)
 
-	c, exp := setupExportOneJSONEntry(t)
+	exp := setupExportOneJSONEntry(t)
+  c := context.Background()
 
 	err := exp.UploadTo(c, server.URL)
 	require.NoError(t, err)

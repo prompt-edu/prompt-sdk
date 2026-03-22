@@ -197,8 +197,7 @@ func TestAddFileClosesReader(t *testing.T) {
 }
 
 func TestAddJSONErrorPropagation(t *testing.T) {
-	exp, err := NewExport()
-	require.NoError(t, err)
+	exp := setupExportEmpty(t)
 
 	exp.AddJSON("_", "file.json", func() (any, error) {
 		return nil, fmt.Errorf("whatever")

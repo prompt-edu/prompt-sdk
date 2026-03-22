@@ -107,7 +107,7 @@ func readZipEntry(t *testing.T, data []byte, expectedName string) []byte {
 
 	f, err := r.File[0].Open()
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { err := f.Close(); require.NoError(t, err) }()
 
 	content, err := io.ReadAll(f)
 	require.NoError(t, err)

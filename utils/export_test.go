@@ -115,26 +115,22 @@ func buildZip(path string, write func(io.Writer) error) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func getCompareZipJSON() []byte {
+func getCompareZipJSON(t *testing.T) []byte {
 	b, err := buildZip(EXAMPLE_JSON_FILENAME, func(w io.Writer) error {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(EXAMPLE_JSON_STRUCT)
 	})
-	if err != nil {
-		return nil
-	}
+  require.NoError(t, err)
 	return b
 }
 
-func getCompareZipBlob() []byte {
+func getCompareZipBlob(t *testing.T) []byte {
 	b, err := buildZip(EXAMPLE_BLOB_FILENAME, func(w io.Writer) error {
 		_, err := w.Write(EXAMPLE_BLOB_CONTENT)
 		return err
 	})
-	if err != nil {
-		return nil
-	}
+  require.NoError(t, err)
 	return b
 }
 
@@ -162,7 +158,7 @@ func TestUploadJSONZIP(t *testing.T) {
 	err := exp.UploadTo(c, server.URL)
 	require.NoError(t, err)
 
-	zipbytes := getCompareZipJSON()
+	zipbytes := getCompareZipJSON(t)
 	require.Equal(t, zipbytes, received)
 }
 
@@ -175,7 +171,7 @@ func TestUploadBlobZIP(t *testing.T) {
 	err := exp.UploadTo(c, server.URL)
 	require.NoError(t, err)
 
-	zipbytes := getCompareZipBlob()
+	zipbytes := getCompareZipBlob(t)
 	require.Equal(t, zipbytes, received)
 }
 
@@ -188,7 +184,7 @@ func TestUploadFileZIP(t *testing.T) {
 	err := exp.UploadTo(c, server.URL)
 	require.NoError(t, err)
 
-	zipbytes := getCompareZipBlob()
+	zipbytes := getCompareZipBlob(t)
 	require.Equal(t, zipbytes, received)
 }
 

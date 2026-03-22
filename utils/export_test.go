@@ -49,6 +49,7 @@ func setupExportEmpty(t *testing.T) (context.Context, *Export) {
   exp, err := NewExport()
   require.NoError(t, err)
   c := context.Background()
+  t.Cleanup(exp.Close)
   return c, exp
 }
 
@@ -87,7 +88,7 @@ func TestErrorEmptyZip(t *testing.T) {
   server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     http.Error(w, "bad request", http.StatusBadRequest)
   }))
-  defer server.Close()
+  t.Cleanup(server.Close)
   c, exp := setupExportEmpty(t)
   err := exp.UploadTo(c, server.URL)
   require.Error(t, err)
@@ -122,8 +123,8 @@ func getCompareZipBlob() []byte {
 	return b
 }
 
-func newTestServer( t *testing.T, received *[]byte) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func newTestServer(t *testing.T, received *[]byte) *httptest.Server {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPut, r.Method)
 		require.Equal(t, "/", r.URL.Path)
 		body, err := io.ReadAll(r.Body)
@@ -133,12 +134,14 @@ func newTestServer( t *testing.T, received *[]byte) *httptest.Server {
     err = r.Body.Close()
     require.NoError(t, err)
 	}))
+	t.Cleanup(server.Close)
+	return server
 }
 
 func TestUploadJSONZIP(t *testing.T) {
   var received []byte
   server := newTestServer(t, &received)
-  defer server.Close()
+
   c, exp := setupExportOneJSONEntry(t)
 
   err := exp.UploadTo(c, server.URL)
@@ -152,7 +155,7 @@ func TestUploadJSONZIP(t *testing.T) {
 func TestUploadBlobZIP(t *testing.T) {
   var received []byte
   server := newTestServer(t, &received)
-  defer server.Close()
+
   c, exp := setupExportOneBlobEntry(t)
 
   err := exp.UploadTo(c, server.URL)
@@ -165,7 +168,7 @@ func TestUploadBlobZIP(t *testing.T) {
 func TestUploadFileZIP(t *testing.T) {
   var received []byte
   server := newTestServer(t, &received)
-  defer server.Close()
+
   c, exp := setupExportOneFileEntry(t)
 
   err := exp.UploadTo(c, server.URL)
@@ -215,7 +218,7 @@ func TestAddJSONErrorPropagation(t *testing.T) {
 func TestAddAfterUploadReturnsError(t *testing.T) {
   var received []byte
   server := newTestServer(t, &received)
-  defer server.Close()
+
   c, exp := setupExportOneJSONEntry(t)
 
   err := exp.UploadTo(c, server.URL)
@@ -230,7 +233,7 @@ func TestAddAfterUploadReturnsError(t *testing.T) {
 func TestUploadAfterUploadReturnsError(t *testing.T) {
   var received []byte
   server := newTestServer(t, &received)
-  defer server.Close()
+
   c, exp := setupExportOneJSONEntry(t)
 
   err := exp.UploadTo(c, server.URL)

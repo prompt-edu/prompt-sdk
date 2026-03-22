@@ -55,7 +55,7 @@ func NewExport() (*Export, error) {
 	return &Export{
 		tmpFile:   tmp,
 		zipWriter: zip.NewWriter(tmp),
-    finished:  false,
+		finished:  false,
 	}, nil
 }
 
@@ -229,7 +229,7 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 		return fmt.Errorf("upload failed with status %s (%d): %s", resp.Status, resp.StatusCode, string(body))
 	}
 
-  e.finished = true
+	e.finished = true
 	return nil
 }
 

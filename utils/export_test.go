@@ -99,39 +99,19 @@ func TestErrorEmptyZip(t *testing.T) {
 	require.Error(t, err)
 }
 
-func buildZip(path string, write func(io.Writer) error) ([]byte, error) {
-	var buf bytes.Buffer
-	zipWriter := zip.NewWriter(&buf)
-	w, err := zipWriter.Create(path)
-	if err != nil {
-		return nil, err
-	}
-	if err := write(w); err != nil {
-		return nil, err
-	}
-	if err := zipWriter.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
+func readZipEntry(t *testing.T, data []byte, expectedName string) []byte {
+	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	require.NoError(t, err)
+	require.Len(t, r.File, 1)
+	require.Equal(t, expectedName, r.File[0].Name)
 
-func getCompareZipJSON(t *testing.T) []byte {
-	b, err := buildZip(EXAMPLE_JSON_FILENAME, func(w io.Writer) error {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(EXAMPLE_JSON_STRUCT)
-	})
-  require.NoError(t, err)
-	return b
-}
+	f, err := r.File[0].Open()
+	require.NoError(t, err)
+	defer f.Close()
 
-func getCompareZipBlob(t *testing.T) []byte {
-	b, err := buildZip(EXAMPLE_BLOB_FILENAME, func(w io.Writer) error {
-		_, err := w.Write(EXAMPLE_BLOB_CONTENT)
-		return err
-	})
-  require.NoError(t, err)
-	return b
+	content, err := io.ReadAll(f)
+	require.NoError(t, err)
+	return content
 }
 
 func newTestServer(t *testing.T, received *[]byte) *httptest.Server {
@@ -158,8 +138,10 @@ func TestUploadJSONZIP(t *testing.T) {
 	err := exp.UploadTo(c, server.URL)
 	require.NoError(t, err)
 
-	zipbytes := getCompareZipJSON(t)
-	require.Equal(t, zipbytes, received)
+	content := readZipEntry(t, received, EXAMPLE_JSON_FILENAME)
+	expected, err := json.MarshalIndent(EXAMPLE_JSON_STRUCT, "", "  ")
+	require.NoError(t, err)
+	require.JSONEq(t, string(expected), string(content))
 }
 
 func TestUploadBlobZIP(t *testing.T) {
@@ -171,8 +153,8 @@ func TestUploadBlobZIP(t *testing.T) {
 	err := exp.UploadTo(c, server.URL)
 	require.NoError(t, err)
 
-	zipbytes := getCompareZipBlob(t)
-	require.Equal(t, zipbytes, received)
+	content := readZipEntry(t, received, EXAMPLE_BLOB_FILENAME)
+	require.Equal(t, EXAMPLE_BLOB_CONTENT, content)
 }
 
 func TestUploadFileZIP(t *testing.T) {
@@ -184,8 +166,8 @@ func TestUploadFileZIP(t *testing.T) {
 	err := exp.UploadTo(c, server.URL)
 	require.NoError(t, err)
 
-	zipbytes := getCompareZipBlob(t)
-	require.Equal(t, zipbytes, received)
+	content := readZipEntry(t, received, EXAMPLE_BLOB_FILENAME)
+	require.Equal(t, EXAMPLE_BLOB_CONTENT, content)
 }
 
 type testReader struct {

@@ -39,36 +39,37 @@ func TestZipSanitizationValidPaths(t *testing.T) {
   }
 }
 
-func TestExportCreation(t * testing.T) {
+func TestExportCreation(t *testing.T) {
   exp, err := NewExport()
   require.NoError(t, err)
   require.IsType(t, &Export{}, exp)
 }
 
-func setupExportEmpty() (context.Context, *Export) {
-  exp, _ := NewExport()
+func setupExportEmpty(t *testing.T) (context.Context, *Export) {
+  exp, err := NewExport()
+  require.NoError(t, err)
   c := context.Background()
   return c, exp
 }
 
-func setupExportOneJSONEntry() (context.Context, *Export) {
-  c, exp := setupExportEmpty()
+func setupExportOneJSONEntry(t *testing.T) (context.Context, *Export) {
+  c, exp := setupExportEmpty(t)
   exp.AddJSON("_", EXAMPLE_JSON_FILENAME, func() (any, error) {
     return EXAMPLE_JSON_STRUCT, nil
   })
   return c, exp
 }
 
-func setupExportOneBlobEntry() (context.Context, *Export) {
-  c, exp := setupExportEmpty()
+func setupExportOneBlobEntry(t *testing.T) (context.Context, *Export) {
+  c, exp := setupExportEmpty(t)
   exp.AddBlob("_", EXAMPLE_BLOB_FILENAME, func() ([]byte, error) {
     return EXAMPLE_BLOB_CONTENT, nil
   })
   return c, exp
 }
 
-func setupExportOneFileEntry() (context.Context, *Export) {
-  c, exp := setupExportEmpty()
+func setupExportOneFileEntry(t *testing.T) (context.Context, *Export) {
+  c, exp := setupExportEmpty(t)
   exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
     return bytes.NewReader(EXAMPLE_BLOB_CONTENT), nil
   })
@@ -76,16 +77,19 @@ func setupExportOneFileEntry() (context.Context, *Export) {
 }
 
 func TestErrorInvalidURL(t *testing.T) {
-  invalid_url := "https://invalid.example"
-  c, exp := setupExportOneJSONEntry()
+  invalid_url := "https:// invalid-url"
+  c, exp := setupExportOneJSONEntry(t)
   err := exp.UploadTo(c, invalid_url)
   require.Error(t, err)
 }
 
 func TestErrorEmptyZip(t *testing.T) {
-  url := "https://does.not.matter.local"
-  c, exp := setupExportEmpty()
-  err := exp.UploadTo(c, url)
+  server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    http.Error(w, "bad request", http.StatusBadRequest)
+  }))
+  defer server.Close()
+  c, exp := setupExportEmpty(t)
+  err := exp.UploadTo(c, server.URL)
   require.Error(t, err)
 }
 
@@ -135,7 +139,7 @@ func TestUploadJSONZIP(t *testing.T) {
   var received []byte
   server := newTestServer(t, &received)
   defer server.Close()
-  c, exp := setupExportOneJSONEntry()
+  c, exp := setupExportOneJSONEntry(t)
 
   err := exp.UploadTo(c, server.URL)
   require.NoError(t, err)
@@ -149,7 +153,7 @@ func TestUploadBlobZIP(t *testing.T) {
   var received []byte
   server := newTestServer(t, &received)
   defer server.Close()
-  c, exp := setupExportOneBlobEntry()
+  c, exp := setupExportOneBlobEntry(t)
 
   err := exp.UploadTo(c, server.URL)
   require.NoError(t, err)
@@ -162,7 +166,7 @@ func TestUploadFileZIP(t *testing.T) {
   var received []byte
   server := newTestServer(t, &received)
   defer server.Close()
-  c, exp := setupExportOneFileEntry()
+  c, exp := setupExportOneFileEntry(t)
 
   err := exp.UploadTo(c, server.URL)
   require.NoError(t, err)

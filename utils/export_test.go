@@ -186,7 +186,8 @@ func (t *testReader) Close() error {
 }
 
 func TestAddFileClosesReader(t *testing.T) {
-	exp, _ := NewExport()
+	exp, err := NewExport()
+  require.NoError(t, err)
 
 	tr := &testReader{
 		Reader: bytes.NewReader(EXAMPLE_BLOB_CONTENT),
@@ -201,7 +202,8 @@ func TestAddFileClosesReader(t *testing.T) {
 }
 
 func TestAddJSONErrorPropagation(t *testing.T) {
-	exp, _ := NewExport()
+	exp, err := NewExport()
+  require.NoError(t, err)
 
 	exp.AddJSON("_", "file.json", func() (any, error) {
 		return nil, fmt.Errorf("whatever")

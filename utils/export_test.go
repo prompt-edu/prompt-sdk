@@ -212,6 +212,34 @@ func TestAddJSONErrorPropagation(t *testing.T) {
 	require.Error(t, exp.Err())
 }
 
+func TestAddAfterUploadReturnsError(t *testing.T) {
+  var received []byte
+  server := newTestServer(t, &received)
+  defer server.Close()
+  c, exp := setupExportOneJSONEntry(t)
+
+  err := exp.UploadTo(c, server.URL)
+  require.NoError(t, err)
+
+  exp.AddJSON("late", "late.json", func() (any, error) {
+    return "should not work", nil
+  })
+  require.ErrorIs(t, exp.Err(), ErrExportFinished)
+}
+
+func TestUploadAfterUploadReturnsError(t *testing.T) {
+  var received []byte
+  server := newTestServer(t, &received)
+  defer server.Close()
+  c, exp := setupExportOneJSONEntry(t)
+
+  err := exp.UploadTo(c, server.URL)
+  require.NoError(t, err)
+
+  err = exp.UploadTo(c, server.URL)
+  require.ErrorIs(t, err, ErrExportFinished)
+}
+
 func TestExportCloseCleansUp(t *testing.T) {
 	exp, err := NewExport()
 	require.NoError(t, err)

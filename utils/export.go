@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,10 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrExportFinished is returned when Add* or UploadTo is called after a
+// successful upload.
+var ErrExportFinished = errors.New("export already uploaded")
 
 // Export assembles data items into a ZIP archive backed by a temporary file.
 // Each Add* call writes immediately to disk, keeping memory usage low.
@@ -36,6 +41,7 @@ type Export struct {
 	tmpFile   *os.File
 	zipWriter *zip.Writer
 	err       error
+	finished  bool
 }
 
 // NewExport creates a new export backed by a temporary file.
@@ -49,6 +55,7 @@ func NewExport() (*Export, error) {
 	return &Export{
 		tmpFile:   tmp,
 		zipWriter: zip.NewWriter(tmp),
+    finished:  false,
 	}, nil
 }
 
@@ -73,6 +80,10 @@ func (e *Export) Err() error {
 // failed, this is a no-op.
 func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 	if e.err != nil {
+		return
+	}
+	if e.finished {
+		e.err = ErrExportFinished
 		return
 	}
 
@@ -108,6 +119,10 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 	if e.err != nil {
 		return
 	}
+	if e.finished {
+		e.err = ErrExportFinished
+		return
+	}
 
 	cleanPath, err := sanitizeZipPath(path)
 	if err != nil {
@@ -140,6 +155,10 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 	if e.err != nil {
 		return
 	}
+	if e.finished {
+		e.err = ErrExportFinished
+		return
+	}
 
 	cleanPath, err := sanitizeZipPath(path)
 	if err != nil {
@@ -170,6 +189,9 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 // UploadTo finalizes the ZIP archive and uploads it via HTTP PUT to the
 // presigned S3 URL. Returns any error from Add* calls or the upload itself.
 func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
+	if e.finished {
+		return ErrExportFinished
+	}
 	if e.err != nil {
 		return e.err
 	}
@@ -207,8 +229,7 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 		return fmt.Errorf("upload failed with status %s (%d): %s", resp.Status, resp.StatusCode, string(body))
 	}
 
-  // set an error in case any function gets called again
-  e.err = fmt.Errorf("Export already uploaded")
+  e.finished = true
 	return nil
 }
 

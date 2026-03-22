@@ -207,6 +207,8 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 		return fmt.Errorf("upload failed with status %s (%d): %s", resp.Status, resp.StatusCode, string(body))
 	}
 
+  // set an error in case any function gets called again
+  e.err = fmt.Errorf("Export already uploaded")
 	return nil
 }
 

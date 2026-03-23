@@ -26,7 +26,7 @@ const EXAMPLE_BLOB_FILENAME = "blob"
 var EXAMPLE_BLOB_CONTENT = []byte{1, 2, 3, 4, 5, 6}
 
 func TestZipSanitizationInvalidPaths(t *testing.T) {
-	invalid_test_paths := []string{"/evil.sh", "../evil.sh", "../../evil.sh", "something/../../evil.sh", "\\..\\..\\Windows"}
+	invalid_test_paths := []string{"/evil.sh", "../evil.sh", "../../evil.sh", "something/../../evil.sh", "\\..\\..\\Windows", "C:\\Users\\Public\\evil.sh", "D:/evil.sh"}
 
 	for _, path := range invalid_test_paths {
 		_, err := sanitizeZipPath(path)

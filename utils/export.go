@@ -64,9 +64,6 @@ func NewExport() (*Export, error) {
 // is absolute or contains traversal segments.
 func sanitizeZipPath(p string) (string, error) {
 	cleaned := path.Clean(strings.ReplaceAll(p, "\\", "/"))
-	// Reject POSIX absolute paths, traversal, empty results, and Windows
-	// volume-prefixed paths (e.g. "C:/Users/...") which some unzip tools
-	// treat as absolute.
 	if cleaned == "." || path.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") ||
 		(len(cleaned) >= 2 && cleaned[1] == ':') {
 		return "", fmt.Errorf("invalid zip entry path: %q", p)

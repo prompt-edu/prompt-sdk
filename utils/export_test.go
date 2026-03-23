@@ -50,14 +50,14 @@ func TestExportCreation(t *testing.T) {
 	require.IsType(t, &Export{}, exp)
 }
 
-func setupExportEmpty(t *testing.T) (*Export) {
+func setupExportEmpty(t *testing.T) *Export {
 	exp, err := NewExport()
 	require.NoError(t, err)
 	t.Cleanup(exp.Close)
 	return exp
 }
 
-func setupExportOneJSONEntry(t *testing.T) (*Export) {
+func setupExportOneJSONEntry(t *testing.T) *Export {
 	exp := setupExportEmpty(t)
 	exp.AddJSON("_", EXAMPLE_JSON_FILENAME, func() (any, error) {
 		return EXAMPLE_JSON_STRUCT, nil
@@ -65,7 +65,7 @@ func setupExportOneJSONEntry(t *testing.T) (*Export) {
 	return exp
 }
 
-func setupExportOneBlobEntry(t *testing.T) (*Export) {
+func setupExportOneBlobEntry(t *testing.T) *Export {
 	exp := setupExportEmpty(t)
 	exp.AddBlob("_", EXAMPLE_BLOB_FILENAME, func() ([]byte, error) {
 		return EXAMPLE_BLOB_CONTENT, nil
@@ -73,7 +73,7 @@ func setupExportOneBlobEntry(t *testing.T) (*Export) {
 	return exp
 }
 
-func setupExportOneFileEntry(t *testing.T) (*Export) {
+func setupExportOneFileEntry(t *testing.T) *Export {
 	exp := setupExportEmpty(t)
 	exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
 		return bytes.NewReader(EXAMPLE_BLOB_CONTENT), nil
@@ -84,7 +84,7 @@ func setupExportOneFileEntry(t *testing.T) (*Export) {
 func TestErrorInvalidURL(t *testing.T) {
 	invalid_url := "https:// invalid-url"
 	exp := setupExportOneJSONEntry(t)
-  c := context.Background()
+	c := context.Background()
 	err := exp.UploadTo(c, invalid_url)
 	require.Error(t, err)
 }
@@ -95,7 +95,7 @@ func TestErrorEmptyZip(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	exp := setupExportEmpty(t)
-  c := context.Background()
+	c := context.Background()
 	err := exp.UploadTo(c, server.URL)
 	require.Error(t, err)
 }
@@ -182,7 +182,7 @@ func (t *testReader) Close() error {
 }
 
 func TestAddFileClosesReader(t *testing.T) {
-  exp := setupExportEmpty(t)
+	exp := setupExportEmpty(t)
 
 	tr := &testReader{
 		Reader: bytes.NewReader(EXAMPLE_BLOB_CONTENT),
@@ -226,7 +226,7 @@ func TestUploadAfterUploadReturnsError(t *testing.T) {
 	server := newTestServer(t, &received)
 
 	exp := setupExportOneJSONEntry(t)
-  c := context.Background()
+	c := context.Background()
 
 	err := exp.UploadTo(c, server.URL)
 	require.NoError(t, err)

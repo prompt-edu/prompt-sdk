@@ -21,12 +21,12 @@ const (
 
 	// CapabilityPrivacyExport indicates support for assembling and returning all
 	// data associated with a subject for GDPR export purposes.
-	// Expected endpoint: GET /api/privacy/data-export/:studentID
+	// Expected endpoint: POST .../privacy/data-export
 	CapabilityPrivacyExport = "privacy.export"
 
 	// CapabilityPrivacyDeletion indicates support for deleting all data
 	// associated with a subject on GDPR deletion request.
-	// Expected endpoint: DELETE /api/privacy/data-deletion/:studentID
+	// Expected endpoint: POST .../privacy/data-deletion
 	CapabilityPrivacyDeletion = "privacy.deletion"
 )
 

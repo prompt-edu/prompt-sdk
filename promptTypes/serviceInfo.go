@@ -79,11 +79,15 @@ func RegisterInfoEndpoint(router *gin.RouterGroup, info ServiceInfo, healthCheck
 			healthy = healthCheck()
 		}
 
+    caps := info.Capabilities
+    if caps == nil {
+      caps = map[string]bool{}
+    }
 		c.JSON(http.StatusOK, ServiceInfo{
 			ServiceName:  info.ServiceName,
 			Version:      info.Version,
 			Healthy:      healthy,
-			Capabilities: info.Capabilities,
+			Capabilities: caps,
 		})
 	})
 }

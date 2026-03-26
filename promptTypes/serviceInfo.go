@@ -74,8 +74,8 @@ type ServiceInfo struct {
 //	    return conn.Ping(context.Background()) == nil
 //	})
 func RegisterInfoEndpoint(router *gin.RouterGroup, info ServiceInfo, healthCheck func() bool) {
-  caps := make(map[string]bool, len(info.Capabilities))
-  maps.Copy(caps, info.Capabilities)
+	caps := make(map[string]bool, len(info.Capabilities))
+	maps.Copy(caps, info.Capabilities)
 	router.GET("/info", func(c *gin.Context) {
 		healthy := true
 		if healthCheck != nil {

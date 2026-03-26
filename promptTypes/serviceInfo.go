@@ -1,6 +1,7 @@
 package promptTypes
 
 import (
+	"maps"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -73,16 +74,13 @@ type ServiceInfo struct {
 //	    return conn.Ping(context.Background()) == nil
 //	})
 func RegisterInfoEndpoint(router *gin.RouterGroup, info ServiceInfo, healthCheck func() bool) {
+  caps := make(map[string]bool, len(info.Capabilities))
+  maps.Copy(caps, info.Capabilities)
 	router.GET("/info", func(c *gin.Context) {
 		healthy := true
 		if healthCheck != nil {
 			healthy = healthCheck()
 		}
-
-    caps := info.Capabilities
-    if caps == nil {
-      caps = map[string]bool{}
-    }
 		c.JSON(http.StatusOK, ServiceInfo{
 			ServiceName:  info.ServiceName,
 			Version:      info.Version,

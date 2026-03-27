@@ -6,15 +6,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier"
 	"github.com/prompt-edu/prompt-sdk/utils"
 )
 
 // PrivacyDataExportRequest is the payload the core server sends to each microservice
 // to trigger a privacy data export.
 type PrivacyDataExportRequest struct {
-	// Subject contains all IDs needed to scope the export to one subject.
-	Subject SubjectIdentifiers `json:"subject"`
-
 	// PreSignedURL is an S3 presigned PUT URL the microservice must upload the zip to.
 	// The object key (file name) and expiry are already encoded in this URL by the core.
 	PreSignedURL string `json:"preSignedURL" binding:"required,url"`
@@ -32,14 +30,14 @@ type PrivacyDataExportRequest struct {
 //	    })
 //	    return nil
 //	}
-type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error
+type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject keycloakTokenVerifier.SubjectIdentifiers) error
 
 // RegisterPrivacyDataExportEndpoint registers the standardized POST endpoint for privacy data exports.
 // The core server calls this endpoint on each microservice when a privacy data export is requested.
 //
 // The endpoint handles the full export lifecycle:
 //   - JSON request parsing and validation
-//   - Authentication through the provided middleware
+//   - Authentication (any valid Keycloak token is accepted)
 //   - Creating the export archive
 //   - Calling the handler to populate it
 //   - Uploading the archive to the presigned S3 URL
@@ -47,12 +45,22 @@ type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject Su
 //
 // Parameters:
 //   - router: The Gin router group where the endpoint will be registered
-//   - authMiddleware: Authentication middleware to protect the endpoint
 //   - handler: Implementation of PrivacyDataExportHandler that populates the export
 //   - allowedUploadHosts: List of allowed hosts for the presigned upload URL.
 //     If nil or empty, all hosts are allowed.
-func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler PrivacyDataExportHandler, allowedUploadHosts []string) {
-	router.POST(PrivacyRouteDataExport, authMiddleware, func(c *gin.Context) {
+func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyDataExportHandler, allowedUploadHosts []string) {
+
+	subjectIdentifierMiddleware := keycloakTokenVerifier.SubjectIdentifierMiddleware()
+
+	router.POST(PrivacyRouteDataExport, keycloakTokenVerifier.KeycloakMiddleware(), subjectIdentifierMiddleware, func(c *gin.Context) {
+
+		subjectIdentifiersVal, exists := c.Get("subjectIdentifiers")
+		subjectIdentifiers, ok := subjectIdentifiersVal.(keycloakTokenVerifier.SubjectIdentifiers)
+		if !exists || !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or no Authorization Header"})
+			return
+		}
+
 		var req PrivacyDataExportRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -84,7 +92,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 		}
 		defer exp.Close()
 
-		if err := handler(c, exp, req.Subject); err != nil {
+		if err := handler(c, exp, subjectIdentifiers); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process export"})
 			return
 		}

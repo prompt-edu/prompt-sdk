@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier"
 )
 
 // PrivacyDataDeletionHandler defines the interface that microservices must implement to
@@ -14,14 +15,14 @@ import (
 type PrivacyDataDeletionHandler interface {
 	// HandlePrivacyDeleteData permanently deletes all data belonging to the identified subject.
 	// Returns an error if the deletion could not be completed.
-	HandlePrivacyDeleteData(c *gin.Context, req SubjectIdentifiers) error
+	HandlePrivacyDeleteData(c *gin.Context, req keycloakTokenVerifier.SubjectIdentifiers) error
 }
 
 // PrivacyDataDeletionRequest wraps the subject identifiers for deletion requests.
 // This mirrors the structure used by other privacy-related endpoints, where the
 // subject identifiers are nested under a top-level "subject" field.
 type PrivacyDataDeletionRequest struct {
-	Subject SubjectIdentifiers `json:"subject" binding:"required"`
+	Subject keycloakTokenVerifier.SubjectIdentifiers `json:"subject" binding:"required"`
 }
 
 // RegisterPrivacyDataDeletionEndpoint registers the standardized POST endpoint for privacy data deletion.

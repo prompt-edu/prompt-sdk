@@ -245,6 +245,16 @@ func TestIsEmptyAfterAddJSON(t *testing.T) {
 	require.False(t, exp.IsEmpty())
 }
 
+func TestIsEmptyAfterAddBlob(t *testing.T) {
+	exp := setupExportOneBlobEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddFile(t *testing.T) {
+	exp := setupExportOneFileEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
 func TestIsEmptyAfterAddJSONNilValue(t *testing.T) {
 	exp := setupExportEmpty(t)
 	exp.AddJSON("_", EXAMPLE_JSON_FILENAME, func() (any, error) {

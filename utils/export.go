@@ -158,7 +158,9 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 
 	if _, err := w.Write(data); err != nil {
 		e.err = fmt.Errorf("writing %q: %w", name, err)
+		return
 	}
+	e.itemCount++
 }
 
 // AddFile streams data from an io.Reader into the archive at the given path.
@@ -197,7 +199,9 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 
 	if _, err := io.Copy(w, r); err != nil {
 		e.err = fmt.Errorf("writing %q: %w", name, err)
+		return
 	}
+	e.itemCount++
 }
 
 // UploadTo finalizes the ZIP archive and uploads it via HTTP PUT to the

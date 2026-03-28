@@ -76,7 +76,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 
 		parsed, err := url.Parse(req.PreSignedURL)
 		if err != nil {
-			logrus.Error("caller passed invalid URL ", req.PreSignedURL)
+			logrus.Error("caller passed unparseable upload URL")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid upload URL"})
 			return
 		}
@@ -84,13 +84,13 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 		host := parsed.Hostname()
 		isLocal := host == "localhost" || host == "127.0.0.1"
 		if parsed.Scheme != "https" && !isLocal {
-			logrus.Error("caller passed non https URL ", req.PreSignedURL)
+			logrus.Error("caller passed non-HTTPS upload URL host: ", host)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "upload URL must use HTTPS"})
 			return
 		}
 
 		if len(allowedUploadHosts) > 0 && !isAllowedHost(host, allowedUploadHosts) {
-			logrus.Error("passed URL ", req.PreSignedURL, " not in allowed hosts", allowedUploadHosts)
+			logrus.Error("upload URL host not in allowlist: ", host)
 			c.JSON(http.StatusForbidden, gin.H{"error": "upload URL host not allowed"})
 			return
 		}
@@ -102,7 +102,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 		}
 		defer exp.Close()
 
-		logrus.Info("Starting Export for Subject ", subjectIdentifiers)
+		logrus.Info("Starting privacy data export")
 
 		if err := handler(c, exp, subjectIdentifiers); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process export"})

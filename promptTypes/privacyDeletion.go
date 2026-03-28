@@ -22,7 +22,6 @@ type PrivacyDataDeletionHandler interface {
 // The core server calls this endpoint on each microservice when a privacy data deletion is requested.
 //
 // The endpoint handles:
-//   - JSON request parsing and validation
 //   - Authentication through the provided middleware
 //   - Error handling and standardized responses
 //   - Success confirmation messages
@@ -33,11 +32,11 @@ type PrivacyDataDeletionHandler interface {
 //   - router: The Gin router group where the endpoint will be registered
 //   - authMiddleware: Authentication middleware to protect the endpoint
 //   - handler: Implementation of PrivacyDataDeletionHandler that performs the actual deletion
-func RegisterPrivacyDataDeletionEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler PrivacyDataDeletionHandler) {
+func RegisterPrivacyDataDeletionEndpoint(router *gin.RouterGroup, handler PrivacyDataDeletionHandler) {
 
 	subjectIdentifierMiddleware := keycloakTokenVerifier.SubjectIdentifierMiddleware()
 
-	router.POST(PrivacyRouteDataDeletion, authMiddleware, subjectIdentifierMiddleware, func(c *gin.Context) {
+	router.POST(PrivacyRouteDataDeletion, keycloakTokenVerifier.KeycloakMiddleware(), subjectIdentifierMiddleware, func(c *gin.Context) {
 
 		subjectIdentifiersVal, exists := c.Get("subjectIdentifiers")
 		subjectIdentifiers, ok := subjectIdentifiersVal.(keycloakTokenVerifier.SubjectIdentifiers)

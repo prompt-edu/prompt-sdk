@@ -53,6 +53,8 @@ type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject ke
 //   - handler: Implementation of PrivacyDataExportHandler that populates the export
 //   - allowedUploadHosts: List of allowed hosts for the presigned upload URL.
 //     If nil or empty, all hosts are allowed.
+//
+// Internal errors are not exposed to the caller and logged
 func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyDataExportHandler, allowedUploadHosts []string) {
 
 	subjectIdentifierMiddleware := keycloakTokenVerifier.SubjectIdentifierMiddleware()

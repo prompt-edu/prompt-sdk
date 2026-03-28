@@ -196,6 +196,25 @@ func TestAddFileClosesReader(t *testing.T) {
 	require.True(t, tr.closed)
 }
 
+func TestAddFileNilReaderIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
+		return nil, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
+func TestAddFileTypedNilReaderIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
+		var r *bytes.Reader = nil
+		return r, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
 func TestAddJSONErrorPropagation(t *testing.T) {
 	exp := setupExportEmpty(t)
 

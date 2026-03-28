@@ -187,6 +187,9 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 		e.err = fmt.Errorf("collecting %q: %w", name, err)
 		return
 	}
+	if isNilValue(r) {
+		return
+	}
 	if closer, ok := r.(io.Closer); ok {
 		defer func() { _ = closer.Close() }()
 	}

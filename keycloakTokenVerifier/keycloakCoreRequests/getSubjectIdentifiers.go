@@ -3,11 +3,15 @@ package keycloakCoreRequests
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 
 	log "github.com/sirupsen/logrus"
 )
+
+// ErrUnauthorized is returned when the core service rejects the token with 401.
+var ErrUnauthorized = errors.New("unauthorized")
 
 func GetSubjectIdentifiers(coreURL url.URL, authHeader string) (SubjectIdentifiers, error) {
 	resp, err := sendRequest(coreURL, "GET", "/api/auth/subject_identifiers", authHeader, nil)
@@ -21,13 +25,13 @@ func GetSubjectIdentifiers(coreURL url.URL, authHeader string) (SubjectIdentifie
 	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		log.Info("Not student of course")
-		return SubjectIdentifiers{}, errors.New("not student of course")
+		log.Info("Received 401 from core for subject identifiers request")
+		return SubjectIdentifiers{}, ErrUnauthorized
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		log.Error("Received non-OK response:", resp.Status)
-		return SubjectIdentifiers{}, nil
+		return SubjectIdentifiers{}, fmt.Errorf("unexpected response from core: %s", resp.Status)
 	}
 
 	var subjectIdentifiers SubjectIdentifiers

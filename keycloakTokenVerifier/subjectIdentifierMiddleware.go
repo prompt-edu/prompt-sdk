@@ -1,6 +1,7 @@
 package keycloakTokenVerifier
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,16 +15,18 @@ func SubjectIdentifierMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "missing Authorization Header",
 			})
 			return
 		}
 		subjIdent, err := keycloakCoreRequests.GetSubjectIdentifiers(KeycloakTokenVerifierSingleton.CoreURL, auth)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"error": err.Error(),
-			})
+			if errors.Is(err, keycloakCoreRequests.ErrUnauthorized) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			} else {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve subject identifiers"})
+			}
 			return
 		}
 		c.Set("subjectIdentifiers", subjIdent)

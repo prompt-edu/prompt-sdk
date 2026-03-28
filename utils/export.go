@@ -156,6 +156,10 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 		return
 	}
 
+	if isNilValue(data) {
+		return
+	}
+
 	if _, err := w.Write(data); err != nil {
 		e.err = fmt.Errorf("writing %q: %w", name, err)
 		return

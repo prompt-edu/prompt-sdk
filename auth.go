@@ -21,3 +21,7 @@ func InitAuthenticationMiddleware(KeycloakURL, Realm, CoreURL string) error {
 func AuthenticationMiddleware(allowedRoles ...string) gin.HandlerFunc {
 	return keycloakTokenVerifier.AuthenticationMiddleware(allowedRoles...)
 }
+
+func SubjectIdentifierMiddleware() gin.HandlerFunc {
+	return keycloakTokenVerifier.SubjectIdentifierMiddleware()
+}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -42,6 +43,13 @@ type Export struct {
 	zipWriter *zip.Writer
 	err       error
 	finished  bool
+	itemCount int
+}
+
+// IsEmpty reports whether no items have been successfully written to the archive.
+// Use this to decide whether to return a "no data" response.
+func (e *Export) IsEmpty() bool {
+	return e.itemCount == 0
 }
 
 // NewExport creates a new export backed by a temporary file.
@@ -99,6 +107,9 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 		e.err = fmt.Errorf("collecting %q: %w", name, err)
 		return
 	}
+	if isNilValue(v) {
+		return
+	}
 
 	w, err := e.zipWriter.Create(cleanPath)
 	if err != nil {
@@ -110,7 +121,9 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
 		e.err = fmt.Errorf("marshaling %q: %w", name, err)
+		return
 	}
+	e.itemCount++
 }
 
 // AddBlob writes raw bytes to the archive at the given path.
@@ -143,9 +156,15 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 		return
 	}
 
+	if isNilValue(data) {
+		return
+	}
+
 	if _, err := w.Write(data); err != nil {
 		e.err = fmt.Errorf("writing %q: %w", name, err)
+		return
 	}
+	e.itemCount++
 }
 
 // AddFile streams data from an io.Reader into the archive at the given path.
@@ -172,6 +191,9 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 		e.err = fmt.Errorf("collecting %q: %w", name, err)
 		return
 	}
+	if isNilValue(r) {
+		return
+	}
 	if closer, ok := r.(io.Closer); ok {
 		defer func() { _ = closer.Close() }()
 	}
@@ -184,7 +206,9 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 
 	if _, err := io.Copy(w, r); err != nil {
 		e.err = fmt.Errorf("writing %q: %w", name, err)
+		return
 	}
+	e.itemCount++
 }
 
 // UploadTo finalizes the ZIP archive and uploads it via HTTP PUT to the
@@ -234,6 +258,20 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 
 	e.finished = true
 	return nil
+}
+
+// isNilValue reports whether v is nil, including typed nils
+// (nil pointer, slice, map, channel, func, interface).
+func isNilValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.Interface:
+		return rv.IsNil()
+	}
+	return false
 }
 
 // Close cleans up resources. Safe to call multiple times.

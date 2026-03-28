@@ -24,7 +24,7 @@ type PrivacyDataExportRequest struct {
 //
 // Example:
 //
-//	func(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error {
+//	func(c *gin.Context, exp *utils.Export, subject keycloakTokenVerifier.SubjectIdentifiers) error {
 //	    exp.AddJSON("User record", "user-record.json", func() (any, error) {
 //	        return db.GetUserByID(c, subject.UserID)
 //	    })

@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier"
 	"github.com/prompt-edu/prompt-sdk/utils"
+	"github.com/sirupsen/logrus"
 )
 
 // PrivacyDataExportRequest is the payload the core server sends to each microservice
@@ -73,6 +74,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 
 		parsed, err := url.Parse(req.PreSignedURL)
 		if err != nil {
+			logrus.Error("caller passed invalid URL ", req.PreSignedURL)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid upload URL"})
 			return
 		}
@@ -80,11 +82,13 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 		host := parsed.Hostname()
 		isLocal := host == "localhost" || host == "127.0.0.1"
 		if parsed.Scheme != "https" && !isLocal {
+			logrus.Error("caller passed non https URL ", req.PreSignedURL)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "upload URL must use HTTPS"})
 			return
 		}
 
 		if len(allowedUploadHosts) > 0 && !isAllowedHost(host, allowedUploadHosts) {
+			logrus.Error("passed URL ", req.PreSignedURL, " not in allowed hosts", allowedUploadHosts)
 			c.JSON(http.StatusForbidden, gin.H{"error": "upload URL host not allowed"})
 			return
 		}
@@ -96,6 +100,8 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 		}
 		defer exp.Close()
 
+		logrus.Info("Starting Export for Subject ", subjectIdentifiers)
+
 		if err := handler(c, exp, subjectIdentifiers); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process export"})
 			return
@@ -106,7 +112,14 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 			return
 		}
 
+		if exp.Err() != nil {
+			logrus.Error("Error while trying to aggregate export ", exp.Err())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "export aggregation failed"})
+			return
+		}
+
 		if err := exp.UploadTo(c.Request.Context(), req.PreSignedURL); err != nil {
+			logrus.Error("Error while trying to upload export ", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to upload export"})
 			return
 		}

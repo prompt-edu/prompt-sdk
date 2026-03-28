@@ -109,14 +109,14 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 			return
 		}
 
-		if exp.IsEmpty() {
-			c.Status(http.StatusNoContent)
-			return
-		}
-
 		if exp.Err() != nil {
 			logrus.Error("Error while trying to aggregate export ", exp.Err())
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "export aggregation failed"})
+			return
+		}
+
+		if exp.IsEmpty() {
+			c.Status(http.StatusNoContent)
 			return
 		}
 

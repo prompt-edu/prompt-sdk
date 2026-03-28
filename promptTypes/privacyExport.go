@@ -43,6 +43,10 @@ type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject ke
 //   - Uploading the archive to the presigned S3 URL
 //   - Cleaning up temporary files
 //
+// HTTP response codes:
+//   - 200 OK: Export data was found, zipped, and successfully uploaded to the presigned URL
+//   - 204 No Content: Request was processed successfully but the handler produced no export data
+//
 // Parameters:
 //   - router: The Gin router group where the endpoint will be registered
 //   - handler: Implementation of PrivacyDataExportHandler that populates the export
@@ -94,6 +98,11 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 
 		if err := handler(c, exp, subjectIdentifiers); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process export"})
+			return
+		}
+
+		if exp.IsEmpty() {
+			c.Status(http.StatusNoContent)
 			return
 		}
 

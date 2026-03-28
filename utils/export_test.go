@@ -235,6 +235,25 @@ func TestUploadAfterUploadReturnsError(t *testing.T) {
 	require.ErrorIs(t, err, ErrExportFinished)
 }
 
+func TestIsEmptyOnFreshExport(t *testing.T) {
+	exp := setupExportEmpty(t)
+	require.True(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddJSON(t *testing.T) {
+	exp := setupExportOneJSONEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddJSONNilValue(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddJSON("_", EXAMPLE_JSON_FILENAME, func() (any, error) {
+		return nil, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
 func TestExportCloseCleansUp(t *testing.T) {
 	exp, err := NewExport()
 	require.NoError(t, err)

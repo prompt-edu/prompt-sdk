@@ -18,13 +18,6 @@ type PrivacyDataDeletionHandler interface {
 	HandlePrivacyDeleteData(c *gin.Context, req keycloakTokenVerifier.SubjectIdentifiers) error
 }
 
-// PrivacyDataDeletionRequest wraps the subject identifiers for deletion requests.
-// This mirrors the structure used by other privacy-related endpoints, where the
-// subject identifiers are nested under a top-level "subject" field.
-type PrivacyDataDeletionRequest struct {
-	Subject keycloakTokenVerifier.SubjectIdentifiers `json:"subject" binding:"required"`
-}
-
 // RegisterPrivacyDataDeletionEndpoint registers the standardized POST endpoint for privacy data deletion.
 // The core server calls this endpoint on each microservice when a privacy data deletion is requested.
 //
@@ -41,14 +34,19 @@ type PrivacyDataDeletionRequest struct {
 //   - authMiddleware: Authentication middleware to protect the endpoint
 //   - handler: Implementation of PrivacyDataDeletionHandler that performs the actual deletion
 func RegisterPrivacyDataDeletionEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler PrivacyDataDeletionHandler) {
-	router.POST(PrivacyRouteDataDeletion, authMiddleware, func(c *gin.Context) {
-		var req PrivacyDataDeletionRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+
+	subjectIdentifierMiddleware := keycloakTokenVerifier.SubjectIdentifierMiddleware()
+
+	router.POST(PrivacyRouteDataDeletion, authMiddleware, subjectIdentifierMiddleware, func(c *gin.Context) {
+
+		subjectIdentifiersVal, exists := c.Get("subjectIdentifiers")
+		subjectIdentifiers, ok := subjectIdentifiersVal.(keycloakTokenVerifier.SubjectIdentifiers)
+		if !exists || !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or no Authorization Header"})
 			return
 		}
 
-		if err := handler.HandlePrivacyDeleteData(c, req.Subject); err != nil {
+		if err := handler.HandlePrivacyDeleteData(c, subjectIdentifiers); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process deletion"})
 			return
 		}

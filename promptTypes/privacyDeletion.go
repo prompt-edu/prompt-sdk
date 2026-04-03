@@ -44,7 +44,6 @@ func RegisterPrivacyDataDeletionEndpoint(router *gin.RouterGroup, handler Privac
 
 	adminOnlyMiddleware := keycloakTokenVerifier.AuthenticationMiddleware(keycloakTokenVerifier.PromptAdmin)
 	router.POST(PrivacyRouteDataDeletion, adminOnlyMiddleware, func(c *gin.Context) {
-
 		var req PrivacyDeletionRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			logrus.Error("caller passed invalid request body")

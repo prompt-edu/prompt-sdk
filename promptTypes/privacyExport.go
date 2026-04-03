@@ -6,15 +6,14 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier"
 	"github.com/prompt-edu/prompt-sdk/utils"
+	"github.com/sirupsen/logrus"
 )
 
 // PrivacyDataExportRequest is the payload the core server sends to each microservice
 // to trigger a privacy data export.
 type PrivacyDataExportRequest struct {
-	// Subject contains all IDs needed to scope the export to one subject.
-	Subject SubjectIdentifiers `json:"subject"`
-
 	// PreSignedURL is an S3 presigned PUT URL the microservice must upload the zip to.
 	// The object key (file name) and expiry are already encoded in this URL by the core.
 	PreSignedURL string `json:"preSignedURL" binding:"required,url"`
@@ -26,33 +25,49 @@ type PrivacyDataExportRequest struct {
 //
 // Example:
 //
-//	func(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error {
+//	func(c *gin.Context, exp *utils.Export, subject keycloakTokenVerifier.SubjectIdentifiers) error {
 //	    exp.AddJSON("User record", "user-record.json", func() (any, error) {
 //	        return db.GetUserByID(c, subject.UserID)
 //	    })
 //	    return nil
 //	}
-type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject SubjectIdentifiers) error
+type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject keycloakTokenVerifier.SubjectIdentifiers) error
 
 // RegisterPrivacyDataExportEndpoint registers the standardized POST endpoint for privacy data exports.
 // The core server calls this endpoint on each microservice when a privacy data export is requested.
 //
 // The endpoint handles the full export lifecycle:
 //   - JSON request parsing and validation
-//   - Authentication through the provided middleware
+//   - Authentication (any valid Keycloak token is accepted)
 //   - Creating the export archive
 //   - Calling the handler to populate it
 //   - Uploading the archive to the presigned S3 URL
 //   - Cleaning up temporary files
 //
+// HTTP response codes:
+//   - 200 OK: Export data was found, zipped, and successfully uploaded to the presigned URL
+//   - 204 No Content: Request was processed successfully but the handler produced no export data
+//
 // Parameters:
 //   - router: The Gin router group where the endpoint will be registered
-//   - authMiddleware: Authentication middleware to protect the endpoint
 //   - handler: Implementation of PrivacyDataExportHandler that populates the export
 //   - allowedUploadHosts: List of allowed hosts for the presigned upload URL.
 //     If nil or empty, all hosts are allowed.
-func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware gin.HandlerFunc, handler PrivacyDataExportHandler, allowedUploadHosts []string) {
-	router.POST(PrivacyRouteDataExport, authMiddleware, func(c *gin.Context) {
+//
+// Internal errors are not exposed to the caller and logged
+func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyDataExportHandler, allowedUploadHosts []string) {
+
+	subjectIdentifierMiddleware := keycloakTokenVerifier.SubjectIdentifierMiddleware()
+
+	router.POST(PrivacyRouteDataExport, keycloakTokenVerifier.KeycloakMiddleware(), subjectIdentifierMiddleware, func(c *gin.Context) {
+
+		subjectIdentifiersVal, exists := c.Get("subjectIdentifiers")
+		subjectIdentifiers, ok := subjectIdentifiersVal.(keycloakTokenVerifier.SubjectIdentifiers)
+		if !exists || !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or no Authorization Header"})
+			return
+		}
+
 		var req PrivacyDataExportRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -61,6 +76,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 
 		parsed, err := url.Parse(req.PreSignedURL)
 		if err != nil {
+			logrus.Error("caller passed unparseable upload URL")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid upload URL"})
 			return
 		}
@@ -68,11 +84,13 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 		host := parsed.Hostname()
 		isLocal := host == "localhost" || host == "127.0.0.1"
 		if parsed.Scheme != "https" && !isLocal {
+			logrus.Error("caller passed non-HTTPS upload URL host: ", host)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "upload URL must use HTTPS"})
 			return
 		}
 
 		if len(allowedUploadHosts) > 0 && !isAllowedHost(host, allowedUploadHosts) {
+			logrus.Error("upload URL host not in allowlist: ", host)
 			c.JSON(http.StatusForbidden, gin.H{"error": "upload URL host not allowed"})
 			return
 		}
@@ -84,12 +102,26 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, authMiddleware g
 		}
 		defer exp.Close()
 
-		if err := handler(c, exp, req.Subject); err != nil {
+		logrus.Info("Starting privacy data export")
+
+		if err := handler(c, exp, subjectIdentifiers); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process export"})
 			return
 		}
 
+		if exp.Err() != nil {
+			logrus.Error("Error while trying to aggregate export ", exp.Err())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "export aggregation failed"})
+			return
+		}
+
+		if exp.IsEmpty() {
+			c.Status(http.StatusNoContent)
+			return
+		}
+
 		if err := exp.UploadTo(c.Request.Context(), req.PreSignedURL); err != nil {
+			logrus.Error("Error while trying to upload export ", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to upload export"})
 			return
 		}

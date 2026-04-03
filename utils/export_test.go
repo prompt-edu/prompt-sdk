@@ -196,6 +196,44 @@ func TestAddFileClosesReader(t *testing.T) {
 	require.True(t, tr.closed)
 }
 
+func TestAddBlobNilSliceIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddBlob("_", EXAMPLE_BLOB_FILENAME, func() ([]byte, error) {
+		return nil, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
+func TestAddBlobTypedNilSliceIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddBlob("_", EXAMPLE_BLOB_FILENAME, func() ([]byte, error) {
+		var b []byte = nil
+		return b, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
+func TestAddFileNilReaderIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
+		return nil, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
+func TestAddFileTypedNilReaderIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
+		var r *bytes.Reader = nil
+		return r, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
 func TestAddJSONErrorPropagation(t *testing.T) {
 	exp := setupExportEmpty(t)
 
@@ -233,6 +271,35 @@ func TestUploadAfterUploadReturnsError(t *testing.T) {
 
 	err = exp.UploadTo(c, server.URL)
 	require.ErrorIs(t, err, ErrExportFinished)
+}
+
+func TestIsEmptyOnFreshExport(t *testing.T) {
+	exp := setupExportEmpty(t)
+	require.True(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddJSON(t *testing.T) {
+	exp := setupExportOneJSONEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddBlob(t *testing.T) {
+	exp := setupExportOneBlobEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddFile(t *testing.T) {
+	exp := setupExportOneFileEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddJSONNilValue(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddJSON("_", EXAMPLE_JSON_FILENAME, func() (any, error) {
+		return nil, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
 }
 
 func TestExportCloseCleansUp(t *testing.T) {

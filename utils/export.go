@@ -150,13 +150,13 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 		return
 	}
 
-	w, err := e.zipWriter.Create(cleanPath)
-	if err != nil {
-		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, cleanPath, err)
+	if isNilValue(data) {
 		return
 	}
 
-	if isNilValue(data) {
+	w, err := e.zipWriter.Create(cleanPath)
+	if err != nil {
+		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, cleanPath, err)
 		return
 	}
 

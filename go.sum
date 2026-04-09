@@ -61,6 +61,8 @@ github.com/getsentry/sentry-go v0.43.0 h1:XbXLpFicpo8HmBDaInk7dum18G9KSLcjZiyUKS
 github.com/getsentry/sentry-go v0.43.0/go.mod h1:XDotiNZbgf5U8bPDUAfvcFmOnMQQceESxyKaObSssW0=
 github.com/getsentry/sentry-go v0.44.1 h1:/cPtrA5qB7uMRrhgSn9TYtcEF36auGP3Y6+ThvD/yaI=
 github.com/getsentry/sentry-go v0.44.1/go.mod h1:XDotiNZbgf5U8bPDUAfvcFmOnMQQceESxyKaObSssW0=
+github.com/getsentry/sentry-go v0.45.0 h1:/ZlbfGcaOzG4QkCACCfxrbuABemjem7UnY5o+V5HmeM=
+github.com/getsentry/sentry-go v0.45.0/go.mod h1:XDotiNZbgf5U8bPDUAfvcFmOnMQQceESxyKaObSssW0=
 github.com/getsentry/sentry-go/logrus v0.43.0 h1:8Mj3oQFVChCUygo4wZYROZpH8EZH0lxLkOFZwB1qO3c=
 github.com/getsentry/sentry-go/logrus v0.43.0/go.mod h1:dXGXUUXDT9gLkh7N7vPUkUndsZ/tqFGIV4fAKndrBXs=
 github.com/getsentry/sentry-go/logrus v0.44.1 h1:xBHYXJmOLK+ZcGI5DjvDHtatoMqRMwD5nHdepH2WwSg=

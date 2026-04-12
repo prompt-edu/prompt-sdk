@@ -13,7 +13,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.41.0
 )
 
-require github.com/getsentry/sentry-go/logrus v0.44.1
+require github.com/getsentry/sentry-go/logrus v0.45.0
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

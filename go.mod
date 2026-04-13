@@ -13,7 +13,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 )
 
-require github.com/getsentry/sentry-go/logrus v0.45.0
+require github.com/getsentry/sentry-go/logrus v0.45.1
 
 require (
 	github.com/moby/moby/api v1.54.1 // indirect
@@ -43,7 +43,7 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/getsentry/sentry-go v0.45.0
+	github.com/getsentry/sentry-go v0.45.1
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

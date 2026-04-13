@@ -13,7 +13,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 )
 
-require github.com/getsentry/sentry-go/logrus v0.45.0
+require github.com/getsentry/sentry-go/logrus v0.45.1
 
 require (
 	github.com/moby/moby/api v1.54.1 // indirect

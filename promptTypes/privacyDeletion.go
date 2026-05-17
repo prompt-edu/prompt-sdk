@@ -34,12 +34,12 @@ type PrivacyDataDeletionHandler interface {
 // deletion requests. The core server calls this endpoint with an admin token on each microservice
 // the moment a privacy deletion has been approved by an admin.
 //
-// The endpoint parses the request body and calls the handler. it also standardizes the response codes:
-//   - 200 OK: The deletion of data for the subject was successful. This is also returned if there was no data stored about that subject
-//   - 400 Bad Request: The request did not match the expected format. Specifically, the request body
-//   - 500 InternalServerError: Something went wrong. And the deletion request may not have been successful
+// The endpoint parses the request body and calls the handler. It also standardizes the response codes:
+//   - 200 OK: The deletion of data for the subject was successful. This is also returned if there was no data stored about that subject.
+//   - 400 Bad Request: The request did not match the expected format.
+//   - 500 Internal Server Error: Something went wrong and the deletion request may not have been successful.
 //
-// Internal errors are not exposed to the caller and logged.
+// Internal errors are not exposed to the caller, but are logged.
 func RegisterPrivacyDataDeletionEndpoint(router *gin.RouterGroup, handler PrivacyDataDeletionHandler) {
 
 	adminOnlyMiddleware := keycloakTokenVerifier.AuthenticationMiddleware(keycloakTokenVerifier.PromptAdmin)

@@ -54,7 +54,7 @@ type PrivacyDataExportHandler func(c *gin.Context, exp *utils.Export, subject ke
 //   - allowedUploadHosts: List of allowed hosts for the presigned upload URL.
 //     If nil or empty, all hosts are allowed.
 //
-// Internal errors are not exposed to the caller and logged
+// Internal errors are not exposed to the caller, but are logged.
 func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyDataExportHandler, allowedUploadHosts []string) {
 
 	subjectIdentifierMiddleware := keycloakTokenVerifier.SubjectIdentifierMiddleware()
@@ -97,6 +97,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 
 		exp, err := utils.NewExport()
 		if err != nil {
+			logrus.Error("failed to create export: ", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create export"})
 			return
 		}
@@ -105,6 +106,7 @@ func RegisterPrivacyDataExportEndpoint(router *gin.RouterGroup, handler PrivacyD
 		logrus.Info("Starting privacy data export")
 
 		if err := handler(c, exp, subjectIdentifiers); err != nil {
+			logrus.Error("export handler returned error: ", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process export"})
 			return
 		}

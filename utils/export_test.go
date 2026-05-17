@@ -352,25 +352,17 @@ func TestContentsWrittenForNonEmptyExport(t *testing.T) {
 }
 
 func TestContentsNotWrittenForEmptyExport(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "bad request", http.StatusBadRequest)
-	}))
-	t.Cleanup(server.Close)
+	var received []byte
+	server := newTestServer(t, &received)
 
 	exp := setupExportEmpty(t)
-	// empty export returns an error from the server (204 path), contents.json must not be written
-	_ = exp.UploadTo(context.Background(), server.URL)
+	err := exp.UploadTo(context.Background(), server.URL)
+	require.NoError(t, err)
 
-	require.True(t, exp.IsEmpty())
-	require.NotContains(t, collectEntryNames(exp), "contents.json")
-}
-
-func collectEntryNames(exp *Export) []string {
-	names := make([]string, len(exp.entries))
-	for i, e := range exp.entries {
-		names[i] = e.Path
+	r := readZip(t, received)
+	for _, f := range r.File {
+		require.NotEqual(t, "contents.json", f.Name)
 	}
-	return names
 }
 
 func TestContentsManifestEntries(t *testing.T) {

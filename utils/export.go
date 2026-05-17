@@ -19,6 +19,11 @@ import (
 // successful upload.
 var ErrExportFinished = errors.New("export already uploaded")
 
+type exportEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
 // Export assembles data items into a ZIP archive backed by a temporary file.
 // Each Add* call writes immediately to disk, keeping memory usage low.
 //
@@ -44,6 +49,7 @@ type Export struct {
 	err       error
 	finished  bool
 	itemCount int
+	entries   []exportEntry
 }
 
 // IsEmpty reports whether no items have been successfully written to the archive.
@@ -124,6 +130,7 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 		return
 	}
 	e.itemCount++
+	e.entries = append(e.entries, exportEntry{Name: name, Path: cleanPath})
 }
 
 // AddBlob writes raw bytes to the archive at the given path.
@@ -165,6 +172,7 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 		return
 	}
 	e.itemCount++
+	e.entries = append(e.entries, exportEntry{Name: name, Path: cleanPath})
 }
 
 // AddFile streams data from an io.Reader into the archive at the given path.
@@ -209,6 +217,23 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 		return
 	}
 	e.itemCount++
+	e.entries = append(e.entries, exportEntry{Name: name, Path: cleanPath})
+}
+
+func (e *Export) writeContents() error {
+	w, err := e.zipWriter.Create("contents.json")
+	if err != nil {
+		return fmt.Errorf("creating contents.json: %w", err)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(struct {
+		ExportedAt time.Time     `json:"exported_at"`
+		Items      []exportEntry `json:"items"`
+	}{
+		ExportedAt: time.Now().UTC(),
+		Items:      e.entries,
+	})
 }
 
 // UploadTo finalizes the ZIP archive and uploads it via HTTP PUT to the
@@ -219,6 +244,12 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 	}
 	if e.err != nil {
 		return e.err
+	}
+
+	if e.itemCount > 0 {
+		if err := e.writeContents(); err != nil {
+			return err
+		}
 	}
 
 	if e.zipWriter != nil {

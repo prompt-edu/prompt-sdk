@@ -3,6 +3,7 @@ package keycloakCoreRequests
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -32,7 +33,7 @@ func SendIsStudentRequest(coreURL url.URL, authHeader string, coursePhaseID uuid
 
 	if resp.StatusCode != http.StatusOK {
 		log.Error("Received non-OK response:", resp.Status)
-		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{}, nil
+		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{}, fmt.Errorf("is student request failed with status %d: %s", resp.StatusCode, resp.Status)
 	}
 
 	var isStudentResponse keycloakTokenVerifierDTO.GetCoursePhaseParticipation

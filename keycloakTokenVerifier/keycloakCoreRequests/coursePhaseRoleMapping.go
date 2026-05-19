@@ -2,6 +2,7 @@ package keycloakCoreRequests
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -11,12 +12,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, coursePhaseID uuid.UUID) (keycloakTokenVerifierDTO.GetCourseRoles, error) {
+func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, coursePhaseID uuid.UUID) (keycloakTokenVerifierDTO.GetCourseRoles, int, error) {
 	path := path.Join("/api/auth/course_phase", coursePhaseID.String(), "roles")
 
 	resp, err := sendRequest(coreURL, "GET", path, authHeader, nil)
 	if err != nil {
-		return keycloakTokenVerifierDTO.GetCourseRoles{}, err
+		return keycloakTokenVerifierDTO.GetCourseRoles{}, http.StatusInternalServerError, err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -26,14 +27,14 @@ func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, cours
 
 	if resp.StatusCode != http.StatusOK {
 		log.Error("Received non-OK response:", resp.Status)
-		return keycloakTokenVerifierDTO.GetCourseRoles{}, nil
+		return keycloakTokenVerifierDTO.GetCourseRoles{}, resp.StatusCode, fmt.Errorf("course phase role mapping request failed with status %d: %s", resp.StatusCode, resp.Status)
 	}
 
 	var authResponse keycloakTokenVerifierDTO.GetCourseRoles
 	if err = json.NewDecoder(resp.Body).Decode(&authResponse); err != nil {
 		log.Error("Error decoding response body:", err)
-		return keycloakTokenVerifierDTO.GetCourseRoles{}, err
+		return keycloakTokenVerifierDTO.GetCourseRoles{}, http.StatusInternalServerError, err
 	}
 
-	return authResponse, nil
+	return authResponse, http.StatusOK, nil
 }

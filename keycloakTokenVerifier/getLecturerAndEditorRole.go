@@ -28,10 +28,10 @@ func getLecturerAndEditorRole() gin.HandlerFunc {
 
 		// TODO: Wrap this around a caching component
 		// retrieve the relevant roles from the core
-		tokenMapping, err := keycloakCoreRequests.SendCoursePhaseRoleMappingRequest(KeycloakTokenVerifierSingleton.CoreURL, c.GetHeader("Authorization"), coursePhaseID)
+		tokenMapping, statusCode, err := keycloakCoreRequests.SendCoursePhaseRoleMappingRequest(KeycloakTokenVerifierSingleton.CoreURL, c.GetHeader("Authorization"), coursePhaseID)
 		if err != nil {
 			log.Error("Error getting course roles:", err)
-			_ = c.AbortWithError(http.StatusInternalServerError, err)
+			_ = c.AbortWithError(statusCode, err)
 			return
 		}
 

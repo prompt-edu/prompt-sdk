@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -17,6 +18,11 @@ import (
 // ErrExportFinished is returned when Add* or UploadTo is called after a
 // successful upload.
 var ErrExportFinished = errors.New("export already uploaded")
+
+type exportEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
 
 // Export assembles data items into a ZIP archive backed by a temporary file.
 // Each Add* call writes immediately to disk, keeping memory usage low.
@@ -42,6 +48,14 @@ type Export struct {
 	zipWriter *zip.Writer
 	err       error
 	finished  bool
+	itemCount int
+	entries   []exportEntry
+}
+
+// IsEmpty reports whether no items have been successfully written to the archive.
+// Use this to decide whether to return a "no data" response.
+func (e *Export) IsEmpty() bool {
+	return e.itemCount == 0
 }
 
 // NewExport creates a new export backed by a temporary file.
@@ -99,6 +113,9 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 		e.err = fmt.Errorf("collecting %q: %w", name, err)
 		return
 	}
+	if isNilValue(v) {
+		return
+	}
 
 	w, err := e.zipWriter.Create(cleanPath)
 	if err != nil {
@@ -110,7 +127,10 @@ func (e *Export) AddJSON(name, path string, fn func() (any, error)) {
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
 		e.err = fmt.Errorf("marshaling %q: %w", name, err)
+		return
 	}
+	e.itemCount++
+	e.entries = append(e.entries, exportEntry{Name: name, Path: cleanPath})
 }
 
 // AddBlob writes raw bytes to the archive at the given path.
@@ -137,6 +157,10 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 		return
 	}
 
+	if isNilValue(data) {
+		return
+	}
+
 	w, err := e.zipWriter.Create(cleanPath)
 	if err != nil {
 		e.err = fmt.Errorf("creating zip entry %q (%s): %w", name, cleanPath, err)
@@ -145,7 +169,10 @@ func (e *Export) AddBlob(name, path string, fn func() ([]byte, error)) {
 
 	if _, err := w.Write(data); err != nil {
 		e.err = fmt.Errorf("writing %q: %w", name, err)
+		return
 	}
+	e.itemCount++
+	e.entries = append(e.entries, exportEntry{Name: name, Path: cleanPath})
 }
 
 // AddFile streams data from an io.Reader into the archive at the given path.
@@ -172,6 +199,9 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 		e.err = fmt.Errorf("collecting %q: %w", name, err)
 		return
 	}
+	if isNilValue(r) {
+		return
+	}
 	if closer, ok := r.(io.Closer); ok {
 		defer func() { _ = closer.Close() }()
 	}
@@ -184,7 +214,26 @@ func (e *Export) AddFile(name, path string, fn func() (io.Reader, error)) {
 
 	if _, err := io.Copy(w, r); err != nil {
 		e.err = fmt.Errorf("writing %q: %w", name, err)
+		return
 	}
+	e.itemCount++
+	e.entries = append(e.entries, exportEntry{Name: name, Path: cleanPath})
+}
+
+func (e *Export) writeContents() error {
+	w, err := e.zipWriter.Create("contents.json")
+	if err != nil {
+		return fmt.Errorf("creating contents.json: %w", err)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(struct {
+		ExportedAt time.Time     `json:"exported_at"`
+		Items      []exportEntry `json:"items"`
+	}{
+		ExportedAt: time.Now().UTC(),
+		Items:      e.entries,
+	})
 }
 
 // UploadTo finalizes the ZIP archive and uploads it via HTTP PUT to the
@@ -195,6 +244,12 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 	}
 	if e.err != nil {
 		return e.err
+	}
+
+	if e.itemCount > 0 {
+		if err := e.writeContents(); err != nil {
+			return err
+		}
 	}
 
 	if e.zipWriter != nil {
@@ -234,6 +289,20 @@ func (e *Export) UploadTo(ctx context.Context, presignedURL string) error {
 
 	e.finished = true
 	return nil
+}
+
+// isNilValue reports whether v is nil, including typed nils
+// (nil pointer, slice, map, channel, func, interface).
+func isNilValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.Interface:
+		return rv.IsNil()
+	}
+	return false
 }
 
 // Close cleans up resources. Safe to call multiple times.

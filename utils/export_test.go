@@ -100,13 +100,27 @@ func TestErrorEmptyZip(t *testing.T) {
 	require.Error(t, err)
 }
 
-func readZipEntry(t *testing.T, data []byte, expectedName string) []byte {
+func readZip(t *testing.T, data []byte) *zip.Reader {
+	t.Helper()
 	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	require.NoError(t, err)
-	require.Len(t, r.File, 1)
-	require.Equal(t, expectedName, r.File[0].Name)
+	return r
+}
 
-	f, err := r.File[0].Open()
+func readZipEntry(t *testing.T, data []byte, expectedName string) []byte {
+	t.Helper()
+	r := readZip(t, data)
+
+	var found *zip.File
+	for _, f := range r.File {
+		if f.Name == expectedName {
+			found = f
+			break
+		}
+	}
+	require.NotNil(t, found, "entry %q not found in zip", expectedName)
+
+	f, err := found.Open()
 	require.NoError(t, err)
 	defer func() { err := f.Close(); require.NoError(t, err) }()
 
@@ -196,6 +210,44 @@ func TestAddFileClosesReader(t *testing.T) {
 	require.True(t, tr.closed)
 }
 
+func TestAddBlobNilSliceIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddBlob("_", EXAMPLE_BLOB_FILENAME, func() ([]byte, error) {
+		return nil, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
+func TestAddBlobTypedNilSliceIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddBlob("_", EXAMPLE_BLOB_FILENAME, func() ([]byte, error) {
+		var b []byte = nil
+		return b, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
+func TestAddFileNilReaderIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
+		return nil, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
+func TestAddFileTypedNilReaderIsSkipped(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddFile("_", EXAMPLE_BLOB_FILENAME, func() (io.Reader, error) {
+		var r *bytes.Reader = nil
+		return r, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
 func TestAddJSONErrorPropagation(t *testing.T) {
 	exp := setupExportEmpty(t)
 
@@ -233,6 +285,111 @@ func TestUploadAfterUploadReturnsError(t *testing.T) {
 
 	err = exp.UploadTo(c, server.URL)
 	require.ErrorIs(t, err, ErrExportFinished)
+}
+
+func TestIsEmptyOnFreshExport(t *testing.T) {
+	exp := setupExportEmpty(t)
+	require.True(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddJSON(t *testing.T) {
+	exp := setupExportOneJSONEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddBlob(t *testing.T) {
+	exp := setupExportOneBlobEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddFile(t *testing.T) {
+	exp := setupExportOneFileEntry(t)
+	require.False(t, exp.IsEmpty())
+}
+
+func TestIsEmptyAfterAddJSONNilValue(t *testing.T) {
+	exp := setupExportEmpty(t)
+	exp.AddJSON("_", EXAMPLE_JSON_FILENAME, func() (any, error) {
+		return nil, nil
+	})
+	require.NoError(t, exp.Err())
+	require.True(t, exp.IsEmpty())
+}
+
+func readContents(t *testing.T, data []byte) struct {
+	ExportedAt string `json:"exported_at"`
+	Items      []struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	} `json:"items"`
+} {
+	t.Helper()
+	raw := readZipEntry(t, data, "contents.json")
+	var manifest struct {
+		ExportedAt string `json:"exported_at"`
+		Items      []struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		} `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+	return manifest
+}
+
+func TestContentsWrittenForNonEmptyExport(t *testing.T) {
+	var received []byte
+	server := newTestServer(t, &received)
+
+	exp := setupExportOneJSONEntry(t)
+	require.NoError(t, exp.UploadTo(context.Background(), server.URL))
+
+	r := readZip(t, received)
+	names := make([]string, len(r.File))
+	for i, f := range r.File {
+		names[i] = f.Name
+	}
+	require.Contains(t, names, "contents.json")
+}
+
+func TestContentsNotWrittenForEmptyExport(t *testing.T) {
+	var received []byte
+	server := newTestServer(t, &received)
+
+	exp := setupExportEmpty(t)
+	err := exp.UploadTo(context.Background(), server.URL)
+	require.NoError(t, err)
+
+	r := readZip(t, received)
+	for _, f := range r.File {
+		require.NotEqual(t, "contents.json", f.Name)
+	}
+}
+
+func TestContentsManifestEntries(t *testing.T) {
+	var received []byte
+	server := newTestServer(t, &received)
+
+	exp := setupExportOneJSONEntry(t)
+	require.NoError(t, exp.UploadTo(context.Background(), server.URL))
+
+	manifest := readContents(t, received)
+	require.Len(t, manifest.Items, 1)
+	require.Equal(t, "_", manifest.Items[0].Name)
+	require.Equal(t, EXAMPLE_JSON_FILENAME, manifest.Items[0].Path)
+	require.NotEmpty(t, manifest.ExportedAt)
+}
+
+func TestContentsAlwaysTwoTopLevelEntriesWithNestedPaths(t *testing.T) {
+	var received []byte
+	server := newTestServer(t, &received)
+
+	exp := setupExportEmpty(t)
+	exp.AddJSON("Nested", "student/records.json", func() (any, error) { return EXAMPLE_JSON_STRUCT, nil })
+	require.NoError(t, exp.UploadTo(context.Background(), server.URL))
+
+	r := readZip(t, received)
+	// student/records.json + contents.json = 2 entries, guaranteeing macOS creates a folder
+	require.Len(t, r.File, 2)
 }
 
 func TestExportCloseCleansUp(t *testing.T) {

@@ -7,20 +7,27 @@ import "github.com/google/uuid"
 // so that each microservice can scope its export or deletion to exactly one subject
 // without performing additional lookups.
 //
-// There are two kinds of subjects:
+// There are three kinds of subjects:
 //
-//   - Student: a person who participates in courses. All fields are populated —
-//     StudentID and CourseParticipationIDs are
-//     guaranteed to be non-empty and should be used to scope data access.
+//   - Student with a Keycloak account: all fields are populated. StudentID and
+//     CourseParticipationIDs should be used to scope data access; UserID can be
+//     used for any user-account-scoped data (e.g. instructor-note authorship).
+//
+//   - Student without a Keycloak account: UserID is uuid.Nil. StudentID and
+//     CourseParticipationIDs are populated and should be used to scope data access.
+//     Skip any user-account-scoped operations.
 //
 //   - Platform user: a person with a platform role such as lecturer, course editor,
-//     or administrator who has no student record. Only UserID is guaranteed to be
-//     set. Microservices should check StudentID == uuid.Nil to detect this case
+//     or administrator who has no student record. Only UserID is set; StudentID is
+//     uuid.Nil. Microservices should check StudentID == uuid.Nil to detect this case
 //     and limit their scope to user-level data only.
+//
+// At least one of UserID and StudentID is always set; both being uuid.Nil is invalid.
 type SubjectIdentifiers struct {
 	// UserID is the platform-wide unique identifier of the user account.
-	// Always present regardless of subject type.
-	UserID uuid.UUID `json:"userID" binding:"required"`
+	// uuid.Nil indicates a student without a Keycloak account; downstream services
+	// should skip user-account-scoped operations in that case.
+	UserID uuid.UUID `json:"userID"`
 
 	// StudentID is the unique identifier of the student record.
 	// Only set for student subjects — uuid.Nil indicates a platform user with no student record.

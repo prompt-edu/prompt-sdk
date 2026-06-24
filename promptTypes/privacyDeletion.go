@@ -14,21 +14,16 @@ type PrivacyDeletionRequest struct {
 	SubjectIdentifiers keycloakTokenVerifier.SubjectIdentifiers `json:"subjectIdentifiers"`
 }
 
-// A microservice should provide a PrivacyDataDeletionHandler. When a request for deletion
-// comes in, the endpoint registered with (RegisterPrivacyDataDeletionEndpoint) will handle
-// authentication and validation and then call the HandlePrivacyDeleteData of the handler
-// The HandlePrivacyDeleteData function is the main function which should delete all data
-// related to the subject identified by the SubjectIdentifiers. Returning no error indicates
-// success.
+// PrivacyDataDeletionHandler is called by the SDK when a privacy deletion request comes in.
+// The implementation should delete all data related to the subject identified by the
+// SubjectIdentifiers. Returning no error indicates success.
 //
 // Example:
 //
 //		func(c *gin.Context, subject keycloakTokenVerifier.SubjectIdentifiers) error {
 //	     return someService.DeleteUser(c, subject.UserID)
 //		}
-type PrivacyDataDeletionHandler interface {
-	HandlePrivacyDeleteData(c *gin.Context, subject keycloakTokenVerifier.SubjectIdentifiers) error
-}
+type PrivacyDataDeletionHandler func(c *gin.Context, subject keycloakTokenVerifier.SubjectIdentifiers) error
 
 // RegisterPrivacyDataDeletionEndpoint registers the standardized POST endpoint for privacy
 // deletion requests. The core server calls this endpoint with an admin token on each microservice
@@ -51,7 +46,7 @@ func RegisterPrivacyDataDeletionEndpoint(router *gin.RouterGroup, handler Privac
 			return
 		}
 
-		if err := handler.HandlePrivacyDeleteData(c, req.SubjectIdentifiers); err != nil {
+		if err := handler(c, req.SubjectIdentifiers); err != nil {
 			logrus.Error("deletion was not successful, error: ", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process deletion"})
 			return

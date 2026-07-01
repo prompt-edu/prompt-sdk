@@ -2,6 +2,7 @@ package keycloakCoreRequests
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -24,9 +25,11 @@ func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, cours
 		}
 	}()
 
+	// Fail closed: an empty role mapping would leave CustomRolePrefix unset, causing
+	// the custom-role check in the auth middleware to match un-prefixed roles.
 	if resp.StatusCode != http.StatusOK {
 		log.Error("Received non-OK response:", resp.Status)
-		return keycloakTokenVerifierDTO.GetCourseRoles{}, nil
+		return keycloakTokenVerifierDTO.GetCourseRoles{}, fmt.Errorf("unexpected core response: %s", resp.Status)
 	}
 
 	var authResponse keycloakTokenVerifierDTO.GetCourseRoles

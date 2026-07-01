@@ -3,6 +3,7 @@ package keycloakCoreRequests
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -25,14 +26,16 @@ func SendIsStudentRequest(coreURL url.URL, authHeader string, coursePhaseID uuid
 		}
 	}()
 
-	if resp.StatusCode == http.StatusUnauthorized {
+	// Core denies cross-course/cross-phase access with 403 (and 401 if unauthenticated).
+	// Both mean "not a student of this course phase" and must fail closed.
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		log.Info("Not student of course")
 		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{IsStudentOfCoursePhase: false}, errors.New("not student of course")
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		log.Error("Received non-OK response:", resp.Status)
-		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{}, nil
+		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{}, fmt.Errorf("unexpected core response: %s", resp.Status)
 	}
 
 	var isStudentResponse keycloakTokenVerifierDTO.GetCoursePhaseParticipation

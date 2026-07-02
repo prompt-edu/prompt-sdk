@@ -10,7 +10,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Important: This requires a CoursePhaseID as a parameter.
+// isStudentOfCoursePhaseMiddleware verifies with core that the caller is a
+// student of the course phase named by the coursePhaseID path parameter. On a
+// denial it fails closed by clearing the student flags on both the gin context
+// and the TokenUser; any unexpected error aborts the request with 500.
 func isStudentOfCoursePhaseMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		coursePhaseID, err := uuid.Parse(c.Param("coursePhaseID"))
@@ -30,16 +33,25 @@ func isStudentOfCoursePhaseMiddleware() gin.HandlerFunc {
 		// request from the core if the user is a student of the course phase
 		isStudentResponse, err := keycloakCoreRequests.SendIsStudentRequest(KeycloakTokenVerifierSingleton.CoreURL, c.GetHeader("Authorization"), coursePhaseID)
 		if err != nil {
-			if err.Error() == "not student of course" {
+			if errors.Is(err, keycloakCoreRequests.ErrNotStudentOfCourse) {
+				// Core denied access (403/401): the caller is not a student of this
+				// course phase. Fail closed on both the context keys and the token user.
 				c.Set("isStudentOfCourse", false)
 				c.Set("isStudentOfCoursePhase", false)
+
+				if tokenUser, ok := GetTokenUser(c); ok {
+					tokenUser.IsStudentOfCourse = false
+					tokenUser.IsStudentOfCoursePhase = false
+					SetTokenUser(c, tokenUser)
+				}
 			} else {
-				log.Error("Error getting course roles:", err)
+				log.Error("Error verifying course phase participation:", err)
 				_ = c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
 		} else {
-			// DEPRECATED: Keep this for backwards compatibility
+			// Reaching here means core returned 200, which it only does after
+			// authorizing the caller as a student of this phase's course.
 			c.Set("isStudentOfCourse", true)
 			c.Set("isStudentOfCoursePhase", isStudentResponse.IsStudentOfCoursePhase)
 			c.Set("courseParticipationID", isStudentResponse.CourseParticipationID)

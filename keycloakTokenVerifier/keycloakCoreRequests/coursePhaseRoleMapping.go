@@ -2,6 +2,8 @@ package keycloakCoreRequests
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -11,6 +13,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// ErrUnauthenticated is returned when core rejects the request as
+// unauthenticated (401), e.g. for an expired or invalid token.
+var ErrUnauthenticated = errors.New("unauthenticated")
+
+// SendCoursePhaseRoleMappingRequest fetches the lecturer/editor/custom role
+// mapping for the given course phase from core. It fails closed by returning an
+// error on any non-200 status, so callers never receive an empty mapping that
+// could weaken the custom-role check in the auth middleware.
 func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, coursePhaseID uuid.UUID) (keycloakTokenVerifierDTO.GetCourseRoles, error) {
 	path := path.Join("/api/auth/course_phase", coursePhaseID.String(), "roles")
 
@@ -24,9 +34,16 @@ func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, cours
 		}
 	}()
 
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.Info("Unauthenticated core response for role mapping")
+		return keycloakTokenVerifierDTO.GetCourseRoles{}, ErrUnauthenticated
+	}
+
+	// Fail closed: an empty role mapping would leave CustomRolePrefix unset, causing
+	// the custom-role check in the auth middleware to match un-prefixed roles.
 	if resp.StatusCode != http.StatusOK {
 		log.Error("Received non-OK response:", resp.Status)
-		return keycloakTokenVerifierDTO.GetCourseRoles{}, nil
+		return keycloakTokenVerifierDTO.GetCourseRoles{}, fmt.Errorf("unexpected core response: %s", resp.Status)
 	}
 
 	var authResponse keycloakTokenVerifierDTO.GetCourseRoles

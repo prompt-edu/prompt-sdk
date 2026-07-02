@@ -1,6 +1,7 @@
 package keycloakCoreRequests
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,11 +14,12 @@ import (
 
 func TestSendIsStudentRequest_StatusMapping(t *testing.T) {
 	tests := []struct {
-		name              string
-		coreStatus        int
-		coreBody          string
-		wantErr           bool
-		wantErrMsg        string
+		name               string
+		coreStatus         int
+		coreBody           string
+		wantErr            bool
+		wantErrMsg         string
+		wantNotStudent     bool
 		wantStudentOfPhase bool
 	}{
 		{
@@ -28,19 +30,21 @@ func TestSendIsStudentRequest_StatusMapping(t *testing.T) {
 			wantStudentOfPhase: true,
 		},
 		{
-			name:       "401 unauthenticated fails closed",
-			coreStatus: http.StatusUnauthorized,
-			wantErr:    true,
-			wantErrMsg: "not student of course",
+			name:           "401 unauthenticated fails closed",
+			coreStatus:     http.StatusUnauthorized,
+			wantErr:        true,
+			wantErrMsg:     "not student of course",
+			wantNotStudent: true,
 		},
 		{
 			// Regression guard for GHSA-4wgm-2wvm-fphm: core denies cross-course
-			// access with 403, which must map to "not student of course".
-			name:       "403 cross-course fails closed",
-			coreStatus: http.StatusForbidden,
-			coreBody:   `{"error":"no matching permission found"}`,
-			wantErr:    true,
-			wantErrMsg: "not student of course",
+			// access with 403, which must map to ErrNotStudentOfCourse.
+			name:           "403 cross-course fails closed",
+			coreStatus:     http.StatusForbidden,
+			coreBody:       `{"error":"no matching permission found"}`,
+			wantErr:        true,
+			wantErrMsg:     "not student of course",
+			wantNotStudent: true,
 		},
 		{
 			name:       "500 unexpected returns hard error",
@@ -68,6 +72,7 @@ func TestSendIsStudentRequest_StatusMapping(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErrMsg)
+				assert.Equal(t, tt.wantNotStudent, errors.Is(err, ErrNotStudentOfCourse))
 			} else {
 				require.NoError(t, err)
 			}

@@ -13,6 +13,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// ErrNotStudentOfCourse is returned when core denies course-phase access (401/403).
+// Callers must compare with errors.Is rather than matching the message string.
+var ErrNotStudentOfCourse = errors.New("not student of course")
+
 func SendIsStudentRequest(coreURL url.URL, authHeader string, coursePhaseID uuid.UUID) (keycloakTokenVerifierDTO.GetCoursePhaseParticipation, error) {
 	path := path.Join("/api/auth/course_phase", coursePhaseID.String(), "is_student")
 
@@ -30,7 +34,7 @@ func SendIsStudentRequest(coreURL url.URL, authHeader string, coursePhaseID uuid
 	// Both mean "not a student of this course phase" and must fail closed.
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		log.Info("Not student of course")
-		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{IsStudentOfCoursePhase: false}, errors.New("not student of course")
+		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{IsStudentOfCoursePhase: false}, ErrNotStudentOfCourse
 	}
 
 	if resp.StatusCode != http.StatusOK {

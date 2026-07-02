@@ -30,7 +30,7 @@ func isStudentOfCoursePhaseMiddleware() gin.HandlerFunc {
 		// request from the core if the user is a student of the course phase
 		isStudentResponse, err := keycloakCoreRequests.SendIsStudentRequest(KeycloakTokenVerifierSingleton.CoreURL, c.GetHeader("Authorization"), coursePhaseID)
 		if err != nil {
-			if err.Error() == "not student of course" {
+			if errors.Is(err, keycloakCoreRequests.ErrNotStudentOfCourse) {
 				// Core denied access (403/401): the caller is not a student of this
 				// course phase. Fail closed on both the context keys and the token user.
 				c.Set("isStudentOfCourse", false)
@@ -42,7 +42,7 @@ func isStudentOfCoursePhaseMiddleware() gin.HandlerFunc {
 					SetTokenUser(c, tokenUser)
 				}
 			} else {
-				log.Error("Error getting course roles:", err)
+				log.Error("Error verifying course phase participation:", err)
 				_ = c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}

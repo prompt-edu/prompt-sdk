@@ -16,11 +16,12 @@ import (
 // empty CustomRolePrefix rather than a silent success.
 func TestSendCoursePhaseRoleMappingRequest_StatusMapping(t *testing.T) {
 	tests := []struct {
-		name        string
-		coreStatus  int
-		coreBody    string
-		wantErr     bool
-		wantPrefix  string
+		name       string
+		coreStatus int
+		coreBody   string
+		wantErr    bool
+		wantErrIs  error
+		wantPrefix string
 	}{
 		{
 			name:       "200 returns role mapping",
@@ -35,6 +36,12 @@ func TestSendCoursePhaseRoleMappingRequest_StatusMapping(t *testing.T) {
 			name:       "403 fails closed",
 			coreStatus: http.StatusForbidden,
 			wantErr:    true,
+		},
+		{
+			name:       "401 maps to ErrUnauthenticated",
+			coreStatus: http.StatusUnauthorized,
+			wantErr:    true,
+			wantErrIs:  ErrUnauthenticated,
 		},
 		{
 			name:       "500 fails closed",
@@ -60,6 +67,9 @@ func TestSendCoursePhaseRoleMappingRequest_StatusMapping(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				if tt.wantErrIs != nil {
+					assert.ErrorIs(t, err, tt.wantErrIs)
+				}
 				assert.Empty(t, resp.CustomRolePrefix)
 			} else {
 				require.NoError(t, err)

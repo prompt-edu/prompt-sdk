@@ -2,6 +2,7 @@ package keycloakCoreRequests
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,6 +12,10 @@ import (
 	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier/keycloakTokenVerifierDTO"
 	log "github.com/sirupsen/logrus"
 )
+
+// ErrUnauthenticated is returned when core rejects the request as
+// unauthenticated (401), e.g. for an expired or invalid token.
+var ErrUnauthenticated = errors.New("unauthenticated")
 
 // SendCoursePhaseRoleMappingRequest fetches the lecturer/editor/custom role
 // mapping for the given course phase from core. It fails closed by returning an
@@ -28,6 +33,11 @@ func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, cours
 			log.Error("failed to close response body:", closeErr)
 		}
 	}()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.Info("Unauthenticated core response for role mapping")
+		return keycloakTokenVerifierDTO.GetCourseRoles{}, ErrUnauthenticated
+	}
 
 	// Fail closed: an empty role mapping would leave CustomRolePrefix unset, causing
 	// the custom-role check in the auth middleware to match un-prefixed roles.

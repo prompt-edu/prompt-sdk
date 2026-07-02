@@ -12,6 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestSendIsStudentRequest_StatusMapping asserts the status-to-result mapping:
+// 200 authorizes, 401/403 map to ErrNotStudentOfCourse, and any other non-200
+// returns a hard error so the middleware fails closed.
 func TestSendIsStudentRequest_StatusMapping(t *testing.T) {
 	tests := []struct {
 		name               string

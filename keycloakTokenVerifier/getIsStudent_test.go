@@ -45,6 +45,8 @@ func newStudentPathRouter(t *testing.T, coreURL string) *gin.Engine {
 	return r
 }
 
+// newCoreStub returns an httptest server that answers every request with the
+// given status and body, standing in for core's is_student endpoint.
 func newCoreStub(status int, body string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(status)

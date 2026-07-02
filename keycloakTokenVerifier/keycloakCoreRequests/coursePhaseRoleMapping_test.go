@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestSendCoursePhaseRoleMappingRequest_StatusMapping asserts the request fails
+// closed: 200 yields the role mapping, while any non-200 returns an error and an
+// empty CustomRolePrefix rather than a silent success.
 func TestSendCoursePhaseRoleMappingRequest_StatusMapping(t *testing.T) {
 	tests := []struct {
 		name        string

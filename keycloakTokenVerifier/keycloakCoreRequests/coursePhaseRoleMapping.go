@@ -12,6 +12,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// SendCoursePhaseRoleMappingRequest fetches the lecturer/editor/custom role
+// mapping for the given course phase from core. It fails closed by returning an
+// error on any non-200 status, so callers never receive an empty mapping that
+// could weaken the custom-role check in the auth middleware.
 func SendCoursePhaseRoleMappingRequest(coreURL url.URL, authHeader string, coursePhaseID uuid.UUID) (keycloakTokenVerifierDTO.GetCourseRoles, error) {
 	path := path.Join("/api/auth/course_phase", coursePhaseID.String(), "roles")
 

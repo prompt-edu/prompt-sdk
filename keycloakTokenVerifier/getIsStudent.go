@@ -10,7 +10,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Important: This requires a CoursePhaseID as a parameter.
+// isStudentOfCoursePhaseMiddleware verifies with core that the caller is a
+// student of the course phase named by the coursePhaseID path parameter. On a
+// denial it fails closed by clearing the student flags on both the gin context
+// and the TokenUser; any unexpected error aborts the request with 500.
 func isStudentOfCoursePhaseMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		coursePhaseID, err := uuid.Parse(c.Param("coursePhaseID"))

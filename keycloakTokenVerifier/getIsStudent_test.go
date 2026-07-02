@@ -24,7 +24,9 @@ func newStudentPathRouter(t *testing.T, coreURL string) *gin.Engine {
 
 	u, err := url.Parse(coreURL)
 	require.NoError(t, err)
+	prev := KeycloakTokenVerifierSingleton
 	KeycloakTokenVerifierSingleton = &KeycloakTokenVerifier{CoreURL: *u}
+	t.Cleanup(func() { KeycloakTokenVerifierSingleton = prev })
 
 	r := gin.New()
 	grp := r.Group("/api/course_phase/:coursePhaseID")

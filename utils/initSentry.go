@@ -28,7 +28,6 @@ func InitSentry(sentryDsn string) error {
 		Environment:      GetEnv("ENVIRONMENT", "development"),
 		Debug:            false,
 		Transport:        transport,
-		EnableLogs:       true,
 		AttachStacktrace: true,
 		SendDefaultPII:   sendDefaultPII,
 		EnableTracing:    true,

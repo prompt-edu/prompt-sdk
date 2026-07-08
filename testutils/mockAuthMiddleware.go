@@ -79,13 +79,19 @@ func MockTutorEditorMiddleware(universityLogin string) gin.HandlerFunc {
 		userRoles := map[string]bool{keycloakTokenVerifier.CourseEditor: true}
 		c.Set("userRoles", userRoles)
 		c.Set("userEmail", universityLogin+"@tum.de")
+		c.Set("matriculationNumber", "0000000")
 		c.Set("universityLogin", universityLogin)
+		c.Set("firstName", "Tutor")
+		c.Set("lastName", "Editor")
 
 		keycloakTokenVerifier.SetTokenUser(c, keycloakTokenVerifier.TokenUser{
-			Roles:           userRoles,
-			Email:           universityLogin + "@tum.de",
-			UniversityLogin: universityLogin,
-			IsEditor:        true,
+			Roles:               userRoles,
+			Email:               universityLogin + "@tum.de",
+			MatriculationNumber: "0000000",
+			UniversityLogin:     universityLogin,
+			FirstName:           "Tutor",
+			LastName:            "Editor",
+			IsEditor:            true,
 		})
 
 		c.Next()

@@ -21,9 +21,12 @@ func MockAuthMiddlewareWithEmail(mockRoles []string, email, matriculationNumber,
 		c.Set("lastName", "Doe")
 
 		keycloakTokenVerifier.SetTokenUser(c, keycloakTokenVerifier.TokenUser{
-			Roles:           userRoles,
-			Email:           email,
-			UniversityLogin: universityLogin,
+			Roles:               userRoles,
+			Email:               email,
+			MatriculationNumber: matriculationNumber,
+			UniversityLogin:     universityLogin,
+			FirstName:           "John",
+			LastName:            "Doe",
 		})
 
 		logrus.Info("MockAuthMiddleware: Mocked user mail: ", email)
@@ -57,7 +60,10 @@ func MockAuthMiddlewareWithParticipation(mockRoles []string, courseParticipation
 		keycloakTokenVerifier.SetTokenUser(c, keycloakTokenVerifier.TokenUser{
 			Roles:                 userRoles,
 			Email:                 "test@example.com",
+			MatriculationNumber:   "0000000",
 			UniversityLogin:       "testuser",
+			FirstName:             "Test",
+			LastName:              "User",
 			CourseParticipationID: courseParticipationID,
 		})
 

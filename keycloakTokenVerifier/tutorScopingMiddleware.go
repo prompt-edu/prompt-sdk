@@ -27,6 +27,9 @@ type TutorTeamResolver interface {
 // editors pass through untouched. pgx.ErrNoRows from the resolver means "not a
 // tutor" (full editor access); any other resolver error fails closed with 500.
 func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
+	if resolver == nil {
+		panic("TutorScopingMiddleware: resolver must not be nil")
+	}
 	return func(c *gin.Context) {
 		tokenUser, ok := GetTokenUser(c)
 		if !ok || !tokenUser.IsEditor || tokenUser.IsLecturer {
@@ -41,7 +44,7 @@ func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
 		}
 
 		coursePhaseID, err := uuid.Parse(c.Param("coursePhaseID"))
-		if err != nil {
+		if err != nil || coursePhaseID == uuid.Nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid course phase id"})
 			return
 		}

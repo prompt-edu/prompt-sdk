@@ -109,4 +109,21 @@ func TestTutorScopingMiddleware(t *testing.T) {
 			t.Fatalf("invalid phase id must abort 400 before resolver, got code=%d called=%v", code, r.called)
 		}
 	})
+
+	t.Run("nil course phase id returns 400", func(t *testing.T) {
+		r := &fakeResolver{teamID: team}
+		code, _, _ := runScoping(t, &TokenUser{IsEditor: true, UniversityLogin: "ab12cde"}, uuid.Nil.String(), r)
+		if code != http.StatusBadRequest || r.called {
+			t.Fatalf("nil phase id must abort 400 before resolver, got code=%d called=%v", code, r.called)
+		}
+	})
+}
+
+func TestTutorScopingMiddleware_NilResolverPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatalf("expected panic on nil resolver")
+		}
+	}()
+	TutorScopingMiddleware(nil)
 }

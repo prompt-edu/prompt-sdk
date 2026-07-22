@@ -1,0 +1,63 @@
+package keycloakTokenVerifier
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+var ErrCourseParticipationIDNotFound = errors.New("course participation ID not found")
+var ErrInvalidCourseParticipationIDFormat = errors.New("invalid course participation ID format")
+var ErrInvalidCourseParticipationID = errors.New("invalid course participation ID")
+
+func GetUserCourseParticipationIDErrorStatus(err error) int {
+	switch err {
+	case ErrCourseParticipationIDNotFound:
+		return http.StatusUnauthorized
+	case ErrInvalidCourseParticipationIDFormat, ErrInvalidCourseParticipationID:
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func GetUserCourseParticipationID(c *gin.Context) (uuid.UUID, error) {
+	userCourseParticipationID, exists := c.Get("courseParticipationID")
+	if !exists {
+		return uuid.UUID{}, ErrCourseParticipationIDNotFound
+	}
+
+	userCourseParticipationUUID, ok := userCourseParticipationID.(uuid.UUID)
+	if !ok {
+		userCourseParticipationStr, ok := userCourseParticipationID.(string)
+		if !ok {
+			return uuid.UUID{}, ErrInvalidCourseParticipationIDFormat
+		}
+		var err error
+		userCourseParticipationUUID, err = uuid.Parse(userCourseParticipationStr)
+		if err != nil {
+			return uuid.UUID{}, ErrInvalidCourseParticipationID
+		}
+	}
+
+	return userCourseParticipationUUID, nil
+}
+
+// ValidateStudentOwnership verifies that the authenticated student only acts on their own
+// course participation. ownedEntityName names the entity in the forbidden error message
+// (e.g. "evaluation completions", "interview assignments").
+func ValidateStudentOwnership(c *gin.Context, authorCourseParticipationID uuid.UUID, ownedEntityName string) (int, error) {
+	userCourseParticipationUUID, err := GetUserCourseParticipationID(c)
+	if err != nil {
+		return GetUserCourseParticipationIDErrorStatus(err), err
+	}
+
+	if authorCourseParticipationID != userCourseParticipationUUID {
+		return http.StatusForbidden, fmt.Errorf("you can only manage your own %s", ownedEntityName)
+	}
+
+	return http.StatusOK, nil
+}

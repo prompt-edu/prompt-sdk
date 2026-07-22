@@ -48,16 +48,13 @@ func InitSentry(sentryDsn string) error {
 		client,
 	)
 
-	eventHook := sentrylogrus.NewEventHookFromClient(
-		[]log.Level{log.ErrorLevel, log.FatalLevel, log.PanicLevel},
-		client,
-	)
+	eventHook := newSentryEventHook([]log.Level{log.ErrorLevel, log.FatalLevel, log.PanicLevel})
 
 	log.AddHook(logHook)
 	log.AddHook(eventHook)
 
 	log.RegisterExitHandler(func() {
-		eventHook.Flush(5 * time.Second)
+		sentry.Flush(5 * time.Second)
 		logHook.Flush(5 * time.Second)
 	})
 

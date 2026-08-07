@@ -5,8 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/prompt-edu/prompt-sdk/utils"
 )
@@ -33,12 +38,35 @@ func NewCoreSink(coreURL, serviceName string) Sink {
 	if key == "" {
 		return nil
 	}
+	if insecureExternalURL(coreURL) {
+		log.Warnf("audit: ingest URL %q sends the shared secret and event payload over plaintext HTTP to a non-internal host; "+
+			"use HTTPS or keep phase->core traffic on an internal network", coreURL)
+	}
 	return &coreSink{
 		url:     coreURL + "/api/audit",
 		service: serviceName,
 		key:     key,
 		client:  &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// insecureExternalURL reports whether raw sends data unencrypted (plain HTTP) to
+// a host that is not clearly internal. Loopback, private IPs, and short service
+// names (docker/k8s, e.g. "server-core") are treated as internal/trusted and do
+// not warn; a dotted public hostname or public IP over HTTP does.
+func insecureExternalURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "https" {
+		return false
+	}
+	host := u.Hostname()
+	if host == "" || host == "localhost" || !strings.Contains(host, ".") {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return !ip.IsLoopback() && !ip.IsPrivate()
+	}
+	return true
 }
 
 // Record posts the event to core with limited retries. It is invoked from a

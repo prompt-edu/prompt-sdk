@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -73,12 +74,28 @@ func newWaitSink(n int) (waitSink, *sync.WaitGroup) {
 	return waitSink{fakeSink: &fakeSink{}, wg: wg}, wg
 }
 
+// waitOrFail waits for the expected async deliveries, failing the test instead
+// of hanging if they never arrive.
+func waitOrFail(t *testing.T, wg *sync.WaitGroup) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for audit event delivery")
+	}
+}
+
 func TestMiddleware_LogsSuccessfulMutation(t *testing.T) {
 	sink, wg := newWaitSink(1)
 	run(t, sink, http.MethodPost, "/api/course_phase/p1/slots", func(r *gin.Engine) {
 		r.POST("/api/course_phase/:coursePhaseID/slots", func(c *gin.Context) { c.Status(http.StatusCreated) })
 	})
-	wg.Wait()
+	waitOrFail(t, wg)
 
 	events := sink.all()
 	require.Len(t, events, 1)
@@ -97,7 +114,7 @@ func TestMiddleware_LogsDeniedAs403(t *testing.T) {
 	run(t, sink, http.MethodDelete, "/api/teams/t1", func(r *gin.Engine) {
 		r.DELETE("/api/teams/:uuid", func(c *gin.Context) { c.Status(http.StatusForbidden) })
 	})
-	wg.Wait()
+	waitOrFail(t, wg)
 
 	events := sink.all()
 	require.Len(t, events, 1)
@@ -136,7 +153,7 @@ func TestMiddleware_DescribeOverridesLabel(t *testing.T) {
 	run(t, sink, http.MethodPost, "/api/courses/c1/copy", func(r *gin.Engine) {
 		r.POST("/api/courses/:courseId/copy", Describe("Copied course"), func(c *gin.Context) { c.Status(http.StatusOK) })
 	})
-	wg.Wait()
+	waitOrFail(t, wg)
 
 	events := sink.all()
 	require.Len(t, events, 1)
@@ -171,7 +188,7 @@ func TestRecord_AutoSuppressesBackstop(t *testing.T) {
 			c.Status(http.StatusOK)
 		})
 	})
-	wg.Wait()
+	waitOrFail(t, wg)
 
 	events := sink.all()
 	require.Len(t, events, 1) // exactly one: the explicit Record, not the backstop
@@ -189,7 +206,7 @@ func TestRecord_StillWritesWhenSuppressed(t *testing.T) {
 			c.Status(http.StatusOK)
 		})
 	})
-	wg.Wait()
+	waitOrFail(t, wg)
 
 	events := sink.all()
 	require.Len(t, events, 1)
@@ -207,7 +224,7 @@ func TestMiddleware_CapturesDenialFromAbortingMiddleware(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/course_phase/p1/grades", nil)
 	r.ServeHTTP(httptest.NewRecorder(), req)
-	wg.Wait()
+	waitOrFail(t, wg)
 
 	events := sink.all()
 	require.Len(t, events, 1)

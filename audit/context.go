@@ -31,23 +31,37 @@ type Actor struct {
 // keys via WithActorExtractor.
 type ActorExtractor func(c *gin.Context) (Actor, bool)
 
+// maxConcurrentDeliveries bounds how many audit events may be in flight to the
+// sink at once. Delivery is best-effort: when the limit is reached (e.g. a slow
+// or unreachable core, whose HTTP sink retries for ~30s per event), further
+// events are dropped with a logged warning rather than spawning unbounded
+// goroutines.
+const maxConcurrentDeliveries = 64
+
 // runtime holds the per-service audit configuration, stashed in the gin context
 // by Middleware so Describe/Record can reach the sink.
 type runtime struct {
 	sink      Sink
 	extractor ActorExtractor
 	source    string
+	sem       chan struct{}
 }
 
 func (rt *runtime) write(e Event) {
 	if e.SourceService == "" {
 		e.SourceService = rt.source
 	}
-	go func() {
-		if err := rt.sink.Record(context.Background(), e); err != nil {
-			log.WithError(err).Error("audit: failed to record event")
-		}
-	}()
+	select {
+	case rt.sem <- struct{}{}:
+		go func() {
+			defer func() { <-rt.sem }()
+			if err := rt.sink.Record(context.Background(), e); err != nil {
+				log.WithError(err).Error("audit: failed to record event")
+			}
+		}()
+	default:
+		log.Warn("audit: delivery concurrency limit reached, dropping audit event")
+	}
 }
 
 func runtimeFrom(c *gin.Context) (*runtime, bool) {
@@ -96,13 +110,19 @@ func Record(c *gin.Context, e Event) {
 	if !ok {
 		return
 	}
+
+	// Every audited action must trace to a human. If no actor is supplied and
+	// none can be extracted, do not record — and do not suppress the automatic
+	// backstop, so a later-resolvable actor can still be captured.
+	if e.ActorID == "" {
+		actor, ok := rt.extractor(c)
+		if !ok {
+			return
+		}
+		applyActor(&e, actor)
+	}
 	c.Set(recordedContextKey, true)
 
-	if e.ActorID == "" {
-		if actor, ok := rt.extractor(c); ok {
-			applyActor(&e, actor)
-		}
-	}
 	if e.Outcome == "" {
 		e.Outcome = OutcomeSuccess
 	}

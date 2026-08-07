@@ -36,7 +36,11 @@ func Middleware(sink Sink, opts ...Option) gin.HandlerFunc {
 	if sink == nil {
 		return func(c *gin.Context) { c.Next() }
 	}
-	rt := &runtime{sink: sink, extractor: defaultActorExtractor}
+	rt := &runtime{
+		sink:      sink,
+		extractor: defaultActorExtractor,
+		sem:       make(chan struct{}, maxConcurrentDeliveries),
+	}
 	for _, opt := range opts {
 		opt(rt)
 	}

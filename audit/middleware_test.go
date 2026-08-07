@@ -196,6 +196,37 @@ func TestRecord_StillWritesWhenSuppressed(t *testing.T) {
 	assert.Equal(t, "Did the thing on purpose", events[0].Action)
 }
 
+func TestMiddleware_CapturesDenialFromAbortingMiddleware(t *testing.T) {
+	sink, wg := newWaitSink(1)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(Middleware(sink, WithActorExtractor(staticActor), WithSourceService("core")))
+	// A downstream authorization middleware that aborts before the handler runs.
+	authz := func(c *gin.Context) { c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "denied"}) }
+	r.POST("/api/course_phase/:coursePhaseID/grades", authz, func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	req := httptest.NewRequest(http.MethodPost, "/api/course_phase/p1/grades", nil)
+	r.ServeHTTP(httptest.NewRecorder(), req)
+	wg.Wait()
+
+	events := sink.all()
+	require.Len(t, events, 1)
+	assert.Equal(t, OutcomeDenied, events[0].Outcome)
+	assert.Equal(t, "u1", events[0].ActorID)
+}
+
+func TestRecord_SkipsWhenNoActor(t *testing.T) {
+	sink := &fakeSink{}
+	run(t, sink, http.MethodPost, "/api/thing", func(r *gin.Engine) {
+		r.POST("/api/thing", func(c *gin.Context) {
+			c.Set("noActor", true)
+			Record(c, Event{Action: "Orphan event"}) // no actor -> must not write a blank-actor entry
+			c.Status(http.StatusOK)
+		})
+	})
+	assert.Empty(t, sink.all())
+}
+
 func TestMiddleware_NilSinkIsNoOp(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

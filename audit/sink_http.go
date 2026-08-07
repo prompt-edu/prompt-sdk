@@ -68,7 +68,7 @@ func (s *coreSink) Record(ctx context.Context, e Event) error {
 			lastErr = err
 			continue
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode < 300 {
 			return nil
 		}

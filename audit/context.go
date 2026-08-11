@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -157,6 +158,7 @@ func defaultActorExtractor(c *gin.Context) (Actor, bool) {
 	for role := range tu.Roles {
 		roles = append(roles, role)
 	}
+	sort.Strings(roles) // stable order (map iteration is randomized)
 	return Actor{
 		ID:    tu.ID,
 		Name:  strings.TrimSpace(tu.FirstName + " " + tu.LastName),
@@ -180,8 +182,13 @@ func primaryRole(roles map[string]bool) string {
 			return role
 		}
 	}
+	// No known role: pick the lexicographically smallest so the value is stable
+	// across requests (map iteration order is randomized).
+	fallback := ""
 	for role := range roles {
-		return role
+		if fallback == "" || role < fallback {
+			fallback = role
+		}
 	}
-	return ""
+	return fallback
 }

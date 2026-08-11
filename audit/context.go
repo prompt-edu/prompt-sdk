@@ -16,6 +16,9 @@ const (
 	actionContextKey   = "auditAction"
 	skipContextKey     = "auditSkip"
 	recordedContextKey = "auditRecorded"
+	// recordedEventsKey holds the []Event buffered by in-request Record calls,
+	// flushed by the middleware after the handler returns (see flushRecordedEvents).
+	recordedEventsKey = "auditRecordedEvents"
 )
 
 // Actor identifies the human who performed an action.
@@ -61,7 +64,11 @@ func (rt *runtime) write(e Event) {
 			}
 		}()
 	default:
-		log.Warn("audit: delivery concurrency limit reached, dropping audit event")
+		// Best-effort delivery: when the in-flight limit is reached (e.g. core is
+		// unreachable and every slot is blocked on retries) the event is dropped.
+		// Log the action and actor so the gap is at least reconstructible.
+		log.WithFields(log.Fields{"action": e.Action, "actorID": e.ActorID}).
+			Warn("audit: delivery concurrency limit reached, dropping audit event")
 	}
 }
 
@@ -100,12 +107,22 @@ func Suppress(c *gin.Context) {
 }
 
 // Record emits a fully-specified audit event from within a handler. It fills in
-// the actor, source service and HTTP context when left blank, and suppresses
-// the middleware's automatic backstop entry for this request so there is no
-// duplicate. Use it for high-stakes actions that need an EntityID/EntityName or
-// before/after Metadata, for multiple events per request, or for background
-// work (pass the initiating human's actor fields explicitly). Best-effort; for
-// atomic guarantees use the core RecordTx helper.
+// the actor, action label, source service and HTTP context when left blank, and
+// suppresses the middleware's automatic backstop entry for this request so there
+// is no duplicate. Use it for high-stakes actions that need an EntityID/
+// EntityName or before/after Metadata, or for multiple events per request.
+//
+// Outcome/status handling: when Outcome is left blank (the common "record, then
+// do the work" case) the event is buffered and flushed by the middleware after
+// the handler returns, so it carries the request's real final status and outcome
+// rather than a premature success. When Outcome is set explicitly — e.g. a
+// background job that has already completed and reports its own result — the
+// event is delivered immediately.
+//
+// For background work, do NOT hand this the live *gin.Context: gin recycles it
+// into a pool once the handler returns. Pass c.Copy() (and set the actor fields
+// and Outcome explicitly). Best-effort; for atomic guarantees use the core
+// RecordTx helper.
 func Record(c *gin.Context, e Event) {
 	rt, ok := runtimeFrom(c)
 	if !ok {
@@ -124,9 +141,6 @@ func Record(c *gin.Context, e Event) {
 	}
 	c.Set(recordedContextKey, true)
 
-	if e.Outcome == "" {
-		e.Outcome = OutcomeSuccess
-	}
 	if e.HTTPMethod == "" {
 		e.HTTPMethod = c.Request.Method
 	}
@@ -136,7 +150,53 @@ func Record(c *gin.Context, e Event) {
 	if e.ActionKey == "" {
 		e.ActionKey = c.Request.Method + " " + c.FullPath()
 	}
-	rt.write(e)
+	if e.Action == "" {
+		e.Action = actionLabel(c, c.Request.Method, c.FullPath())
+	}
+	// Marshalling happens asynchronously; snapshot the caller's map so a handler
+	// that keeps mutating Metadata after Record does not race the delivery.
+	if e.Metadata != nil {
+		e.Metadata = cloneMetadata(e.Metadata)
+	}
+
+	// Explicit outcome => deliver now (background/final event). No outcome yet =>
+	// buffer and let the middleware stamp the real status/outcome after c.Next().
+	if e.Outcome != "" {
+		rt.write(e)
+		return
+	}
+	bufferEvent(c, e)
+}
+
+// bufferEvent appends an in-request event to the per-request buffer flushed by
+// the middleware after the handler returns.
+func bufferEvent(c *gin.Context, e Event) {
+	var buf []Event
+	if v, ok := c.Get(recordedEventsKey); ok {
+		if existing, ok := v.([]Event); ok {
+			buf = existing
+		}
+	}
+	c.Set(recordedEventsKey, append(buf, e))
+}
+
+// actionLabel returns the explicit Describe label if one was set for the route,
+// otherwise the derived default. Shared by Record and the middleware backstop.
+func actionLabel(c *gin.Context, method, routeTemplate string) string {
+	if label, ok := c.Get(actionContextKey); ok {
+		if s, ok := label.(string); ok && s != "" {
+			return s
+		}
+	}
+	return deriveAction(method, routeTemplate)
+}
+
+func cloneMetadata(m map[string]any) map[string]any {
+	cp := make(map[string]any, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return cp
 }
 
 func applyActor(e *Event, actor Actor) {
@@ -169,17 +229,25 @@ func defaultActorExtractor(c *gin.Context) (Actor, bool) {
 }
 
 // primaryRole picks the highest-privilege role present, used as the filterable
-// actor_role.
+// actor_role. The platform roles are matched exactly, but course roles arrive
+// course-prefixed (e.g. "ios24-Lecturer"), so they are matched by suffix — the
+// same scheme the SDK auth middleware uses.
 func primaryRole(roles map[string]bool) string {
-	for _, role := range []string{
-		keycloakTokenVerifier.PromptAdmin,
-		keycloakTokenVerifier.PromptLecturer,
+	if roles[keycloakTokenVerifier.PromptAdmin] {
+		return keycloakTokenVerifier.PromptAdmin
+	}
+	if roles[keycloakTokenVerifier.PromptLecturer] {
+		return keycloakTokenVerifier.PromptLecturer
+	}
+	for _, courseRole := range []string{
 		keycloakTokenVerifier.CourseLecturer,
 		keycloakTokenVerifier.CourseEditor,
 		keycloakTokenVerifier.CourseStudent,
 	} {
-		if roles[role] {
-			return role
+		for userRole := range roles {
+			if strings.HasSuffix(userRole, courseRole) {
+				return courseRole
+			}
 		}
 	}
 	// No known role: pick the lexicographically smallest so the value is stable

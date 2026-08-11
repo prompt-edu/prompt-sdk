@@ -49,6 +49,12 @@ func Middleware(sink Sink, opts ...Option) gin.HandlerFunc {
 		c.Set(runtimeContextKey, rt)
 		c.Next()
 
+		// Flush events buffered by in-request Record calls first, stamping the
+		// real final status/outcome. These are honored even when Skip/Suppress is
+		// set — those only silence the automatic backstop, not events the
+		// developer asked for explicitly.
+		flushRecordedEvents(c, rt)
+
 		if c.GetBool(skipContextKey) || c.GetBool(recordedContextKey) {
 			return
 		}
@@ -64,28 +70,59 @@ func Middleware(sink Sink, opts ...Option) gin.HandlerFunc {
 	}
 }
 
+// flushRecordedEvents delivers the events Record buffered during the request,
+// now that the final HTTP status is known.
+func flushRecordedEvents(c *gin.Context, rt *runtime) {
+	v, ok := c.Get(recordedEventsKey)
+	if !ok {
+		return
+	}
+	events, ok := v.([]Event)
+	if !ok {
+		return
+	}
+	status := c.Writer.Status()
+	for _, e := range events {
+		if e.HTTPStatus == 0 {
+			e.HTTPStatus = status
+		}
+		if e.Outcome == "" {
+			e.Outcome = outcomeFor(status)
+		}
+		rt.write(e)
+	}
+}
+
+// outcomeForStatus classifies a status for the automatic backstop, which only
+// records clear successes (2xx) and denials. Denials abort with 403 in core's
+// permission middleware and 401 in the SDK auth middleware; both count, and the
+// actor gate filters out unauthenticated 401s (no resolvable actor).
 func outcomeForStatus(status int) (string, bool) {
 	switch {
 	case status >= 200 && status < 300:
 		return OutcomeSuccess, true
-	case status == 403:
+	case status == 401 || status == 403:
 		return OutcomeDenied, true
 	default:
 		return "", false
 	}
 }
 
+// outcomeFor is the total version used when flushing an explicit event: an
+// unclassified status (e.g. a 5xx after "record, then do the work") is recorded
+// as an error rather than a false success.
+func outcomeFor(status int) string {
+	if o, ok := outcomeForStatus(status); ok {
+		return o
+	}
+	return OutcomeError
+}
+
 func buildEvent(c *gin.Context, actor Actor, outcome string) Event {
 	routeTemplate := c.FullPath()
-	action := deriveAction(c.Request.Method, routeTemplate)
-	if label, ok := c.Get(actionContextKey); ok {
-		if s, ok := label.(string); ok && s != "" {
-			action = s
-		}
-	}
 
 	e := Event{
-		Action:        action,
+		Action:        actionLabel(c, c.Request.Method, routeTemplate),
 		ActionKey:     c.Request.Method + " " + routeTemplate,
 		Outcome:       outcome,
 		CourseID:      firstParam(c, "courseId", "courseID"),

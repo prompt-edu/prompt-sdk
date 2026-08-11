@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -130,7 +131,9 @@ func TestMiddleware_SkipsReadsAndNoise(t *testing.T) {
 		noActor      bool
 	}{
 		{"GET read", http.MethodGet, http.StatusOK, false},
-		{"401 unauth", http.MethodPost, http.StatusUnauthorized, false},
+		// A real unauthenticated 401 has no resolvable actor, so it is skipped;
+		// the actor gate is what filters token-invalid noise from genuine denials.
+		{"401 unauth", http.MethodPost, http.StatusUnauthorized, true},
 		{"404 not found", http.MethodPost, http.StatusNotFound, false},
 		{"422 validation", http.MethodPost, http.StatusUnprocessableEntity, false},
 		{"no actor", http.MethodPost, http.StatusCreated, true},
@@ -146,6 +149,70 @@ func TestMiddleware_SkipsReadsAndNoise(t *testing.T) {
 			assert.Empty(t, sink.all())
 		})
 	}
+}
+
+func TestMiddleware_Logs401DenialWithActor(t *testing.T) {
+	// The SDK auth middleware aborts authorization denials with 401 (not 403);
+	// a 401 that still has a resolvable actor is a genuine denied attempt.
+	sink, wg := newWaitSink(1)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(Middleware(sink, WithActorExtractor(staticActor), WithSourceService("core")))
+	authz := func(c *gin.Context) { c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "denied"}) }
+	r.POST("/api/course_phase/:coursePhaseID/grades", authz, func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/course_phase/p1/grades", nil))
+	waitOrFail(t, wg)
+
+	events := sink.all()
+	require.Len(t, events, 1)
+	assert.Equal(t, OutcomeDenied, events[0].Outcome)
+	assert.Equal(t, "u1", events[0].ActorID)
+}
+
+func TestRecord_UsesDescribeLabelWhenActionBlank(t *testing.T) {
+	sink, wg := newWaitSink(1)
+	run(t, sink, http.MethodPost, "/api/courses/c1/publish", func(r *gin.Engine) {
+		r.POST("/api/courses/:courseId/publish", Describe("Published grades"), func(c *gin.Context) {
+			Record(c, Event{EntityType: "grade", EntityID: "g1"}) // no Action
+			c.Status(http.StatusOK)
+		})
+	})
+	waitOrFail(t, wg)
+
+	events := sink.all()
+	require.Len(t, events, 1)
+	assert.Equal(t, "Published grades", events[0].Action) // Describe label, not blank
+}
+
+func TestRecord_StampsRealStatusAndErrorOutcome(t *testing.T) {
+	// "record, then do the work" where the work then fails: the buffered event
+	// must carry the real 500 status and an error outcome, not a premature success.
+	sink, wg := newWaitSink(1)
+	run(t, sink, http.MethodPost, "/api/grades", func(r *gin.Engine) {
+		r.POST("/api/grades", func(c *gin.Context) {
+			Record(c, Event{Action: "Published grades"})
+			c.Status(http.StatusInternalServerError)
+		})
+	})
+	waitOrFail(t, wg)
+
+	events := sink.all()
+	require.Len(t, events, 1)
+	assert.Equal(t, OutcomeError, events[0].Outcome)
+	assert.Equal(t, http.StatusInternalServerError, events[0].HTTPStatus)
+}
+
+func TestPrimaryRole_MatchesCoursePrefixedRoles(t *testing.T) {
+	// Course roles arrive course-prefixed and must match by suffix; platform
+	// roles match exactly and win over course roles.
+	assert.Equal(t, "Lecturer", primaryRole(map[string]bool{"ios24-Lecturer": true}))
+	assert.Equal(t, "Editor", primaryRole(map[string]bool{"ios24-Editor": true}))
+	assert.Equal(t, "PROMPT_Admin", primaryRole(map[string]bool{"PROMPT_Admin": true, "ios24-Lecturer": true}))
+	// PROMPT_Lecturer must not be misread as a course Lecturer by the suffix match.
+	assert.Equal(t, "PROMPT_Lecturer", primaryRole(map[string]bool{"PROMPT_Lecturer": true}))
+	// Unknown roles fall back deterministically to the smallest.
+	assert.Equal(t, "aaa", primaryRole(map[string]bool{"zzz": true, "aaa": true}))
 }
 
 func TestMiddleware_DescribeOverridesLabel(t *testing.T) {
@@ -292,6 +359,50 @@ func TestNewCoreSink_SendsHeaders(t *testing.T) {
 	assert.Equal(t, "secret", gotToken)
 }
 
+func TestNewCoreSink_JoinsPathWithoutDoubleSlash(t *testing.T) {
+	t.Setenv("AUDIT_ENABLED", "true")
+	t.Setenv("AUDIT_INGEST_KEY", "secret")
+	s, ok := NewCoreSink("http://core:8080/", "interview").(*coreSink)
+	require.True(t, ok)
+	assert.Equal(t, "http://core:8080/api/audit", s.url) // trailing slash collapsed
+}
+
+func TestCoreSink_RetryPolicy(t *testing.T) {
+	t.Setenv("AUDIT_ENABLED", "true")
+	t.Setenv("AUDIT_INGEST_KEY", "secret")
+	for _, tc := range []struct {
+		name         string
+		status       int
+		wantAttempts int32
+		wantErr      bool
+	}{
+		{"2xx succeeds", http.StatusNoContent, 1, false},
+		{"4xx fails fast", http.StatusUnauthorized, 1, true},
+		{"3xx is not success and fails fast", http.StatusFound, 1, true},
+		{"5xx retries", http.StatusInternalServerError, 3, true},
+		{"429 retries", http.StatusTooManyRequests, 3, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var attempts int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&attempts, 1)
+				w.WriteHeader(tc.status)
+			}))
+			defer srv.Close()
+
+			sink := NewCoreSink(srv.URL, "interview")
+			require.NotNil(t, sink)
+			err := sink.Record(context.Background(), Event{Action: "x"})
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantAttempts, atomic.LoadInt32(&attempts))
+		})
+	}
+}
+
 func TestInsecureExternalURL(t *testing.T) {
 	for in, want := range map[string]bool{
 		"https://core.example.com": false, // TLS
@@ -302,6 +413,8 @@ func TestInsecureExternalURL(t *testing.T) {
 		"http://192.168.1.10":      false, // private IP
 		"http://core.example.com":  true,  // public FQDN over plaintext
 		"http://8.8.8.8:8080":      true,  // public IP over plaintext
+		"server-core:8080":         true,  // scheme-less: parses with no host, warn
+		"":                         true,  // empty: malformed config, warn
 	} {
 		assert.Equal(t, want, insecureExternalURL(in), in)
 	}
@@ -311,4 +424,18 @@ func TestDeriveAction(t *testing.T) {
 	assert.Equal(t, "Created slot", deriveAction("POST", "/api/course_phase/:id/slots"))
 	assert.Equal(t, "Updated participation", deriveAction("PATCH", "/api/.../participations"))
 	assert.Equal(t, "Deleted team", deriveAction("DELETE", "/api/teams/:uuid"))
+}
+
+func TestSingularize(t *testing.T) {
+	for in, want := range map[string]string{
+		"slots":          "slot",
+		"teams":          "team",
+		"participations": "participation",
+		"status":         "status",   // -us: keep
+		"campus":         "campus",   // -us: keep
+		"analysis":       "analysis", // -is: keep
+		"class":          "class",    // -ss: keep
+	} {
+		assert.Equal(t, want, singularize(in), in)
+	}
 }

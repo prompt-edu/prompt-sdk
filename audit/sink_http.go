@@ -42,8 +42,16 @@ func NewCoreSink(coreURL, serviceName string) Sink {
 		log.Warnf("audit: ingest URL %q sends the shared secret and event payload over plaintext HTTP to a non-internal host; "+
 			"use HTTPS or keep phase->core traffic on an internal network", coreURL)
 	}
+	// url.JoinPath normalizes separators, so a coreURL with (or without) a
+	// trailing slash still yields ".../api/audit" rather than "...//api/audit",
+	// which gin would 404 at runtime.
+	ingestURL, err := url.JoinPath(coreURL, "api", "audit")
+	if err != nil {
+		log.Warnf("audit: invalid core URL %q: %v; audit reporting disabled for this service", coreURL, err)
+		return nil
+	}
 	return &coreSink{
-		url:     coreURL + "/api/audit",
+		url:     ingestURL,
 		service: serviceName,
 		key:     key,
 		client:  &http.Client{Timeout: 10 * time.Second},
@@ -56,12 +64,18 @@ func NewCoreSink(coreURL, serviceName string) Sink {
 // not warn; a dotted public hostname or public IP over HTTP does.
 func insecureExternalURL(raw string) bool {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "https" {
+	if err != nil {
+		return true // unparseable: warn rather than silently accept a bad config
+	}
+	if u.Scheme == "https" {
 		return false
 	}
 	host := u.Hostname()
-	if host == "" || host == "localhost" || !strings.Contains(host, ".") {
-		return false
+	if host == "" {
+		return true // e.g. a scheme-less "server-core:8080" — malformed, warn
+	}
+	if host == "localhost" || !strings.Contains(host, ".") {
+		return false // loopback or a short service name (docker/k8s)
 	}
 	if ip := net.ParseIP(host); ip != nil {
 		return !ip.IsLoopback() && !ip.IsPrivate()
@@ -94,13 +108,20 @@ func (s *coreSink) Record(ctx context.Context, e Event) error {
 		resp, err := s.client.Do(req)
 		if err != nil {
 			lastErr = err
-			continue
+			continue // network error: worth retrying
 		}
+		status := resp.StatusCode
 		_ = resp.Body.Close()
-		if resp.StatusCode < 300 {
+		if status >= 200 && status < 300 {
 			return nil
 		}
-		lastErr = fmt.Errorf("audit ingest returned status %d", resp.StatusCode)
+		lastErr = fmt.Errorf("audit ingest returned status %d", status)
+		// Only transient failures are worth retrying. A 4xx (e.g. 401 from a key
+		// mismatch, or 400 from a malformed event) fails identically every time,
+		// so retrying it just burns the delivery slots that other events need.
+		if status != http.StatusTooManyRequests && status < 500 {
+			return lastErr
+		}
 	}
 	return lastErr
 }

@@ -9,10 +9,12 @@ package audit
 
 import "context"
 
-// Outcome values distinguish a successful action from a denied attempt.
+// Outcome values distinguish a successful action, a denied attempt, and an
+// action whose request ultimately errored.
 const (
 	OutcomeSuccess = "success"
 	OutcomeDenied  = "denied"
+	OutcomeError   = "error"
 )
 
 // Event is the neutral, transport-agnostic audit record. The same struct is
@@ -30,7 +32,7 @@ type Event struct {
 	// What happened.
 	Action     string `json:"action"`     // human-readable, e.g. "Created slot"
 	ActionKey  string `json:"actionKey"`  // machine key, e.g. "POST /api/.../slots"
-	Outcome    string `json:"outcome"`    // OutcomeSuccess | OutcomeDenied
+	Outcome    string `json:"outcome"`    // OutcomeSuccess | OutcomeDenied | OutcomeError
 	EntityType string `json:"entityType"` // optional
 	EntityID   string `json:"entityID"`   // optional
 	EntityName string `json:"entityName"` // snapshotted human-readable subject

@@ -15,6 +15,11 @@ const (
 	// Expected endpoint: POST .../course_phase/:coursePhaseID/copy
 	CapabilityPhaseCopy = "phase.copy"
 
+	// CapabilityPhaseDeletion indicates support for deleting all data a module
+	// stores for a course phase when that phase is permanently deleted.
+	// Expected endpoint: POST .../course_phase/:coursePhaseID/delete
+	CapabilityPhaseDeletion = "phase.deletion"
+
 	// CapabilityPhaseConfig indicates support for reporting the configuration
 	// status of a course phase.
 	// Expected endpoint: GET .../course_phase/:coursePhaseID/config
@@ -29,6 +34,11 @@ const (
 	// associated with a subject on GDPR deletion request.
 	// Expected endpoint: POST .../privacy/data-deletion
 	CapabilityPrivacyDeletion = "privacy.deletion"
+
+	// CapabilityAuditLog indicates that the service reports audit events to the
+	// central audit log (via the shared audit middleware). Reflects whether the
+	// AUDIT_ENABLED feature toggle is on for the service.
+	CapabilityAuditLog = "audit.log"
 )
 
 // ServiceInfo describes a course phase microservice — its identity, health, and capabilities.

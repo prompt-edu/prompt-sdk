@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier"
 	"github.com/prompt-edu/prompt-sdk/utils"
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,10 @@ func (stubConfigHandler) HandlePhaseConfig(*gin.Context) (map[string]bool, error
 type stubCopyHandler struct{}
 
 func (stubCopyHandler) HandlePhaseCopy(*gin.Context, PhaseCopyRequest) error { return nil }
+
+type stubDeletionHandler struct{}
+
+func (stubDeletionHandler) HandleCoursePhaseDeletion(*gin.Context, uuid.UUID) error { return nil }
 
 func registeredRoutes(t *testing.T, register func(*gin.RouterGroup)) map[string]bool {
 	t.Helper()
@@ -40,6 +45,14 @@ func TestRegisterConfigAndCopyModule(t *testing.T) {
 
 	require.True(t, routes["GET /course_phase/:coursePhaseID/config"])
 	require.True(t, routes["POST /course_phase/:coursePhaseID/copy"])
+}
+
+func TestRegisterPhaseDeletionModule(t *testing.T) {
+	routes := registeredRoutes(t, func(g *gin.RouterGroup) {
+		RegisterPhaseDeletionModule(g, stubDeletionHandler{})
+	})
+
+	require.True(t, routes["POST /course_phase/:coursePhaseID/delete"])
 }
 
 func TestRegisterPrivacyModuleWithDeletion(t *testing.T) {

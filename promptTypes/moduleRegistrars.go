@@ -19,6 +19,18 @@ func RegisterCopyModule(group *gin.RouterGroup, handler PhaseCopyHandler, roles 
 	RegisterCopyEndpoint(group, keycloakTokenVerifier.AuthenticationMiddleware(roles...), handler)
 }
 
+// RegisterPhaseDeletionModule wires a phase deletion module onto the given router group: it
+// registers the standardized /delete endpoint. The endpoint protects itself (PromptAdmin and
+// CourseLecturer, mirroring the core server), so no roles are taken here. It is named after the
+// phase.deletion capability to keep it apart from the privacy deletion handled by
+// RegisterPrivacyModule.
+//
+// The group's path must contain ":coursePhaseID" (e.g. ".../api/course_phase/:coursePhaseID"),
+// as required by RegisterCoursePhaseDeletionEndpoint.
+func RegisterPhaseDeletionModule(group *gin.RouterGroup, handler CoursePhaseDeletionHandler) {
+	RegisterCoursePhaseDeletionEndpoint(group, handler)
+}
+
 // RegisterPrivacyModule wires a phase privacy module onto the given router group by registering the
 // standardized privacy data-export endpoint and, when a deletion handler is supplied, the
 // data-deletion endpoint. Both endpoints manage their own authentication (export accepts any valid

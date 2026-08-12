@@ -1,9 +1,9 @@
 module github.com/prompt-edu/prompt-sdk
 
-go 1.26
+go 1.26.5
 
 require (
-	github.com/coreos/go-oidc/v3 v3.19.0
+	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/google/uuid v1.6.0
@@ -13,7 +13,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.43.0
 )
 
-require github.com/getsentry/sentry-go/logrus v0.47.0
+require github.com/getsentry/sentry-go/logrus v0.48.0
 
 require (
 	github.com/moby/moby/api v1.54.2 // indirect
@@ -43,7 +43,7 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/getsentry/sentry-go v0.47.0
+	github.com/getsentry/sentry-go v0.48.0
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

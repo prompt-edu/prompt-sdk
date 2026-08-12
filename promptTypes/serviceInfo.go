@@ -34,6 +34,11 @@ const (
 	// associated with a subject on GDPR deletion request.
 	// Expected endpoint: POST .../privacy/data-deletion
 	CapabilityPrivacyDeletion = "privacy.deletion"
+
+	// CapabilityAuditLog indicates that the service reports audit events to the
+	// central audit log (via the shared audit middleware). Reflects whether the
+	// AUDIT_ENABLED feature toggle is on for the service.
+	CapabilityAuditLog = "audit.log"
 )
 
 // ServiceInfo describes a course phase microservice — its identity, health, and capabilities.

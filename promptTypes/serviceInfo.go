@@ -15,6 +15,11 @@ const (
 	// Expected endpoint: POST .../course_phase/:coursePhaseID/copy
 	CapabilityPhaseCopy = "phase.copy"
 
+	// CapabilityPhaseDeletion indicates support for deleting all data a module
+	// stores for a course phase when that phase is permanently deleted.
+	// Expected endpoint: POST .../course_phase/:coursePhaseID/delete
+	CapabilityPhaseDeletion = "phase.deletion"
+
 	// CapabilityPhaseConfig indicates support for reporting the configuration
 	// status of a course phase.
 	// Expected endpoint: GET .../course_phase/:coursePhaseID/config

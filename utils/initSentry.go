@@ -29,7 +29,7 @@ func InitSentry(sentryDsn string) error {
 		Debug:            false,
 		Transport:        transport,
 		AttachStacktrace: true,
-		SendDefaultPII:   sendDefaultPII,
+		DataCollection:   sentryDataCollection(sendDefaultPII),
 		EnableTracing:    true,
 		TracesSampleRate: 1.0,
 	}); err != nil {
@@ -60,4 +60,29 @@ func InitSentry(sentryDsn string) error {
 
 	log.Info("Sentry initialized successfully")
 	return nil
+}
+
+func sentryDataCollection(sendDefaultPII bool) *sentry.DataCollection {
+	if sendDefaultPII {
+		return &sentry.DataCollection{}
+	}
+
+	return &sentry.DataCollection{
+		UserInfo: sentry.Set(false),
+		Cookies:  &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionOff},
+		HTTPHeaders: &sentry.HeaderCollectionConfig{
+			Request:  piiDenyList(),
+			Response: piiDenyList(),
+		},
+		HTTPBodies:  []sentry.BodyType{},
+		QueryParams: piiDenyList(),
+	}
+}
+
+// Mirrors sentry-go's unexported SendDefaultPII=false denylist, which also scrubs IP and user-id keys.
+func piiDenyList() *sentry.KeyValueCollectionBehavior {
+	return &sentry.KeyValueCollectionBehavior{
+		Mode:  sentry.CollectionDenyList,
+		Terms: []string{"forwarded", "-ip", "remote-", "via", "-user"},
+	}
 }

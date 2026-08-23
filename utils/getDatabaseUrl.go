@@ -2,18 +2,12 @@ package utils
 
 import "fmt"
 
+const defaultDBPassword = "prompt-postgres"
+
 // GetDatabaseURL constructs a PostgreSQL connection string from environment variables.
 // It provides sensible defaults for local development.
 func GetDatabaseURL() string {
-	dbUser := GetEnv("DB_USER", "prompt-postgres")
-	dbPassword := GetEnv("DB_PASSWORD", "prompt-postgres")
-	dbHost := GetEnv("DB_HOST", "localhost")
-	dbPort := GetEnv("DB_PORT", "5432")
-	dbName := GetEnv("DB_NAME", "prompt")
-	sslMode := GetEnv("SSL_MODE", "disable")
-	timeZone := GetEnv("DB_TIMEZONE", "Europe/Berlin") // Add a timezone parameter
-
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s&TimeZone=%s", dbUser, dbPassword, dbHost, dbPort, dbName, sslMode, timeZone)
+	return buildDatabaseURL(GetEnv("DB_HOST", "localhost"), GetEnv("DB_PORT", "5432"))
 }
 
 // GetDatabaseURLForPrefix constructs a PostgreSQL connection string for a specific phase service,
@@ -22,13 +16,23 @@ func GetDatabaseURL() string {
 // port for that phase. All other variables (DB_USER, DB_PASSWORD, DB_NAME, SSL_MODE, DB_TIMEZONE)
 // are shared with GetDatabaseURL.
 func GetDatabaseURLForPrefix(envPrefix, defaultPort string) string {
-	dbUser := GetEnv("DB_USER", "prompt-postgres")
-	dbPassword := GetEnv("DB_PASSWORD", "prompt-postgres")
-	dbHost := GetEnv("DB_HOST_"+envPrefix, "localhost")
-	dbPort := GetEnv("DB_PORT_"+envPrefix, defaultPort)
-	dbName := GetEnv("DB_NAME", "prompt")
-	sslMode := GetEnv("SSL_MODE", "disable")
-	timeZone := GetEnv("DB_TIMEZONE", "Europe/Berlin")
+	return buildDatabaseURL(GetEnv("DB_HOST_"+envPrefix, "localhost"), GetEnv("DB_PORT_"+envPrefix, defaultPort))
+}
 
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s&TimeZone=%s", dbUser, dbPassword, dbHost, dbPort, dbName, sslMode, timeZone)
+func buildDatabaseURL(host, port string) string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s&TimeZone=%s",
+		GetEnv("DB_USER", "prompt-postgres"),
+		databasePassword(),
+		host,
+		port,
+		GetEnv("DB_NAME", "prompt"),
+		GetEnv("SSL_MODE", "disable"),
+		GetEnv("DB_TIMEZONE", "Europe/Berlin"),
+	)
+}
+
+// databasePassword is the single source for the password, so the connection string and the
+// mask applied to migration output cannot drift apart and leak the credential.
+func databasePassword() string {
+	return GetEnv("DB_PASSWORD", defaultDBPassword)
 }

@@ -3,13 +3,14 @@ package promptSDK
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	"maps"
 	"time"
 
 	"github.com/getsentry/sentry-go"
 	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prompt-edu/prompt-sdk/audit"
 	"github.com/prompt-edu/prompt-sdk/promptTypes"
 	"github.com/prompt-edu/prompt-sdk/utils"
 	log "github.com/sirupsen/logrus"
@@ -45,6 +46,7 @@ type ServiceOptions struct {
 	MigrationsPath string
 
 	// Capabilities is reported by the /info endpoint. Use the promptTypes.Capability* keys.
+	// Bootstrap adds promptTypes.CapabilityAuditLog itself, reflecting the audit configuration.
 	Capabilities map[string]bool
 
 	// RegisterRoutes wires the service's own modules onto the router groups. It receives the base
@@ -54,9 +56,13 @@ type ServiceOptions struct {
 }
 
 // Bootstrap composes the phase-service startup sequence that every service copies today:
-// Sentry -> DB URL -> migrations -> pgx pool -> gin + Sentry + CORS -> route groups -> Keycloak ->
-// service routes -> /info health endpoint -> run. It returns an error instead of calling log.Fatal,
-// so callers do log.Fatal(promptSDK.Bootstrap(opts)). It blocks in router.Run until the server exits.
+// Sentry -> DB URL -> migrations -> pgx pool -> gin + Sentry + CORS + audit -> route groups ->
+// Keycloak -> service routes -> /info health endpoint -> run. It blocks in router.Run until the
+// server exits, and returns an error instead of calling log.Fatal:
+//
+//	if err := promptSDK.Bootstrap(opts); err != nil {
+//	    log.Fatal(err)
+//	}
 func Bootstrap(opts ServiceOptions) error {
 	coursePhasePath := opts.CoursePhasePath
 	if coursePhasePath == "" {
@@ -75,7 +81,7 @@ func Bootstrap(opts ServiceOptions) error {
 
 	databaseURL := utils.GetDatabaseURLForPrefix(opts.DBEnvPrefix, opts.DefaultDBPort)
 
-	if err := runMigrations(migrationsPath, databaseURL); err != nil {
+	if err := utils.RunMigrations(databaseURL, migrationsPath); err != nil {
 		return err
 	}
 
@@ -92,6 +98,9 @@ func Bootstrap(opts ServiceOptions) error {
 	}
 	router.Use(CORSMiddleware(GetEnv("CORE_HOST", "http://localhost:3000")))
 
+	auditSink := audit.NewCoreSink(utils.GetCoreUrl(), opts.ServiceName)
+	router.Use(audit.Middleware(auditSink, audit.WithSourceService(opts.ServiceName)))
+
 	api := router.Group(opts.BasePath)
 	coursePhase := api.Group(coursePhasePath)
 
@@ -105,10 +114,14 @@ func Bootstrap(opts ServiceOptions) error {
 		}
 	}
 
+	capabilities := make(map[string]bool, len(opts.Capabilities)+1)
+	maps.Copy(capabilities, opts.Capabilities)
+	capabilities[promptTypes.CapabilityAuditLog] = auditSink != nil
+
 	promptTypes.RegisterInfoEndpoint(api, promptTypes.ServiceInfo{
 		ServiceName:  opts.ServiceName,
 		Version:      GetEnv("SERVER_IMAGE_TAG", ""),
-		Capabilities: opts.Capabilities,
+		Capabilities: capabilities,
 	}, func() bool {
 		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 		defer cancel()
@@ -118,17 +131,4 @@ func Bootstrap(opts ServiceOptions) error {
 	serverAddress := GetEnv("SERVER_ADDRESS", opts.DefaultAddress)
 	log.Infof("%s server started on %s", opts.ServiceName, serverAddress)
 	return router.Run(serverAddress)
-}
-
-// runMigrations runs golang-migrate and prints its output with the DB password masked, so the
-// credential never reaches the logs even when migrate echoes the connection string on error.
-func runMigrations(migrationsPath, databaseURL string) error {
-	cmd := exec.Command("migrate", "-path", migrationsPath, "-database", databaseURL, "up")
-	output, err := cmd.CombinedOutput()
-	sanitized := utils.SanitizeDatabaseURL(string(output), GetEnv("DB_PASSWORD", "prompt-postgres"))
-	if err != nil {
-		return fmt.Errorf("failed to run migrations: %w\n%s", err, sanitized)
-	}
-	fmt.Print(sanitized)
-	return nil
 }

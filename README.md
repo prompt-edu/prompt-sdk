@@ -5,6 +5,7 @@ A lightweight Go SDK for building Prompt services.
 ## What it provides
 
 - Keycloak-based authentication middleware for Gin with role-aware access control
+- Cross-phase tutor team scoping: one read gate, one write policy, one tutor table shape
 - Standardized HTTP endpoints for course phase config/copy flows
 - Resolution helpers to fetch and merge data from the Prompt Core and other services
 - Shared domain models used across Prompt services
@@ -32,6 +33,42 @@ Install via your Go module tooling (module path: github.com/prompt-edu/prompt-sd
 - Course-phase roles (resolved via Core using `:coursePhaseID`): "Lecturer", "Editor", "Student"
 - Custom roles supported via a prefix provided by Core; any additional role names can be checked against that prefix
 - The middleware verifies standard OIDC fields and attaches a token user to the request context
+
+## Tutor team scoping
+
+A tutor is a course editor recorded as responsible for exactly one team of a course phase. The
+`tutorscope` package owns that access control for every phase service that models teams, so all of
+them behave the same way. A module that consumes a team with tutor input does not have to know which
+phase produced it.
+
+Reads and writes are deliberately asymmetric:
+
+- `tutorscope.Middleware(resolver)` resolves the tutor's team onto the request and fails **open**.
+  An editor with no resolvable tutor record keeps full read access. Handlers narrow their responses
+  with `tutorscope.TeamID(c)`.
+- `tutorscope.AuthorizeWrite(c)` resolves the same request into a write scope and fails **closed**.
+  Admins and course lecturers write any team; an editor with a resolved tutor team is confined to it;
+  everyone else is denied. Reusing the read gate for writes would hand every unresolvable editor
+  write access to every team of the phase.
+
+Apply a confined scope inside the mutating statement rather than reading the current team first, so
+authorization and mutation are atomic:
+
+```go
+access, err := tutorscope.AuthorizeWrite(c)   // ErrWriteDenied -> 403, ErrScopingNotApplied -> 500
+if err == nil && !access.AllowsTeam(targetTeam) {
+    err = tutorscope.ErrWriteDenied           // a tutor may not write into a team that is not theirs
+}
+rows, err := queries.MoveParticipant(ctx, MoveParticipantParams{
+    TeamID:         targetTeam,
+    ExpectedTeamID: access.Guard(),           // NULL when unrestricted
+})
+// rows == 0 for a confined caller means the row moved out of their team: ErrWriteDenied
+```
+
+Supply the tutor lookup either by implementing `tutorscope.Resolver` over your own queries, or with
+`tutorscope.NewPgxResolver(pool)` against a `tutor` table with the canonical shape documented on that
+constructor. Store logins as `tutorscope.NormalizeLogin` returns them.
 
 ## Resolution helpers
 

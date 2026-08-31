@@ -14,6 +14,12 @@ import (
 // TutorTeamIDKey is the gin context key under which the resolved tutor team ID is stored.
 const TutorTeamIDKey = "tutorTeamID"
 
+// TutorScopingAppliedKey is the gin context key marking that TutorScopingMiddleware
+// ran on this request. Write authorization needs to tell "this editor is not a tutor"
+// apart from "the route forgot the middleware": both leave no team in the context, but
+// only the first is a legitimate denial.
+const TutorScopingAppliedKey = "tutorScopingApplied"
+
 // TutorTeamResolver is implemented by each service against its own database. It
 // is transport-agnostic (no gin types) so the lookup stays a one-method adapter
 // over the service's sqlc queries.
@@ -31,6 +37,10 @@ func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
 		panic("TutorScopingMiddleware: resolver must not be nil")
 	}
 	return func(c *gin.Context) {
+		// Set before any branch, so the marker means "the middleware ran", not
+		// "the middleware resolved something".
+		c.Set(TutorScopingAppliedKey, true)
+
 		tokenUser, ok := GetTokenUser(c)
 		if !ok || !tokenUser.IsEditor || tokenUser.IsLecturer {
 			c.Next()
@@ -73,4 +83,14 @@ func GetTutorTeamID(c *gin.Context) (uuid.UUID, bool) {
 		}
 	}
 	return uuid.Nil, false
+}
+
+// TutorScopingApplied reports whether TutorScopingMiddleware ran on this request.
+func TutorScopingApplied(c *gin.Context) bool {
+	applied, exists := c.Get(TutorScopingAppliedKey)
+	if !exists {
+		return false
+	}
+	ran, ok := applied.(bool)
+	return ok && ran
 }

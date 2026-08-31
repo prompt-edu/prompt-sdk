@@ -24,15 +24,17 @@ type CoursePhaseDeletionHandler interface {
 	HandleCoursePhaseDeletion(c *gin.Context, coursePhaseID uuid.UUID) error
 }
 
-// RegisterCoursePhaseDeletionEndpoint registers the standardized POST /delete endpoint for course
-// phase deletion. Because permanently removing a phase's data is a destructive operation, the SDK
-// protects the endpoint itself rather than accepting an authorization middleware from the caller:
-// it allows PromptAdmin and CourseLecturer, mirroring the roles the core server requires to delete
-// a course phase.
+// RegisterCoursePhaseDeletionEndpoint registers the standardized course phase deletion endpoint:
+// DELETE on the course phase route itself, mirroring the core server's
+// DELETE /api/course_phase/:coursePhaseID. Because permanently removing a phase's data is a
+// destructive operation, the SDK protects the endpoint itself rather than accepting an
+// authorization middleware from the caller: it allows PromptAdmin and CourseLecturer, mirroring
+// the roles the core server requires to delete a course phase.
 //
 // The endpoint MUST be registered on a router group whose path contains ":coursePhaseID"
 // (e.g. ".../api/course_phase/:coursePhaseID"). The course phase ID is read from that path
-// parameter, and it is also required to resolve the CourseLecturer role.
+// parameter, and it is also required to resolve the CourseLecturer role. The endpoint is
+// registered on the group path itself, so the group must not already serve DELETE.
 //
 // The endpoint standardizes the response codes:
 //   - 200 OK: The deletion of data for the course phase was successful. This is also returned if
@@ -45,11 +47,13 @@ type CoursePhaseDeletionHandler interface {
 //
 // Internal errors are not exposed to the caller, but are logged.
 //
-// Example endpoint path: POST /self-team-allocation/api/course_phase/:coursePhaseID/delete
+// Example endpoint path: DELETE /self-team-allocation/api/course_phase/:coursePhaseID
 func RegisterCoursePhaseDeletionEndpoint(router *gin.RouterGroup, handler CoursePhaseDeletionHandler) {
 
 	authMiddleware := keycloakTokenVerifier.AuthenticationMiddleware(keycloakTokenVerifier.PromptAdmin, keycloakTokenVerifier.CourseLecturer)
-	router.POST("/delete", authMiddleware, func(c *gin.Context) {
+	// The empty relative path registers the handler on the router group's own path, so the route
+	// is DELETE .../course_phase/:coursePhaseID rather than a /delete sub-path.
+	router.DELETE("", authMiddleware, func(c *gin.Context) {
 		coursePhaseID, err := uuid.Parse(c.Param("coursePhaseID"))
 		if err != nil {
 			logrus.Error("caller passed invalid or missing coursePhaseID path parameter")

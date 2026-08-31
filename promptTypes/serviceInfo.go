@@ -17,7 +17,7 @@ const (
 
 	// CapabilityPhaseDeletion indicates support for deleting all data a module
 	// stores for a course phase when that phase is permanently deleted.
-	// Expected endpoint: POST .../course_phase/:coursePhaseID/delete
+	// Expected endpoint: DELETE .../course_phase/:coursePhaseID
 	CapabilityPhaseDeletion = "phase.deletion"
 
 	// CapabilityPhaseConfig indicates support for reporting the configuration

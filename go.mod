@@ -1,11 +1,11 @@
 module github.com/prompt-edu/prompt-sdk
 
-go 1.27.0
+go 1.27.1
 
 require (
 	github.com/coreos/go-oidc/v3 v3.20.0
-	github.com/getsentry/sentry-go v0.48.0
-	github.com/getsentry/sentry-go/logrus v0.48.0
+	github.com/getsentry/sentry-go v0.49.0
+	github.com/getsentry/sentry-go/logrus v0.49.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/google/uuid v1.6.0

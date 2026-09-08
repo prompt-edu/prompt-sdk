@@ -70,10 +70,9 @@ func AuthenticationMiddleware(allowedRoles ...string) gin.HandlerFunc {
 				return
 			}
 
-			if containsCustomRoleName(allowedRoles...) {
-				prefix := tokenUser.CustomRolePrefix
-
-				for _, role := range allowedRoles {
+			// An empty prefix would degrade the lookup to an un-prefixed role match.
+			if prefix := tokenUser.CustomRolePrefix; prefix != "" {
+				for _, role := range customRoleNames(allowedRoles) {
 					if userRoles[prefix+role] {
 						c.Next()
 						return
@@ -133,15 +132,23 @@ func requiresLecturerOrCustom(allowedSet map[string]struct{}, roles []string) bo
 }
 
 func containsCustomRoleName(allowedRoles ...string) bool {
-	nonCustomRoles := []string{PromptAdmin, PromptLecturer, CourseLecturer, CourseEditor, CourseStudent}
+	return len(customRoleNames(allowedRoles)) > 0
+}
 
+// builtInRoles are the roles the middleware resolves itself. They must never be
+// matched against the course role prefix, which is reserved for custom group roles.
+var builtInRoles = []string{PromptAdmin, PromptLecturer, CourseLecturer, CourseEditor, CourseStudent}
+
+// customRoleNames returns the allowed roles naming a course-specific group role
+// rather than a built-in role.
+func customRoleNames(allowedRoles []string) []string {
+	custom := make([]string, 0, len(allowedRoles))
 	for _, role := range allowedRoles {
-		if !slices.Contains(nonCustomRoles, role) {
-			return true
+		if !slices.Contains(builtInRoles, role) {
+			custom = append(custom, role)
 		}
 	}
-
-	return false
+	return custom
 }
 
 // onlyContainsAdminAndLecturer returns true if the allowedSet only contains

@@ -104,3 +104,36 @@ func TestRequiresLecturerOrCustom(t *testing.T) {
 		})
 	}
 }
+
+// TestCustomRoleNames guards the set of roles the middleware matches against the
+// course role prefix. Built-in roles must never appear: prefixing them matches
+// real course group roles such as "<prefix>Student", which would grant access
+// without the per-phase check core performs for those roles.
+func TestCustomRoleNames(t *testing.T) {
+	tests := []struct {
+		name  string
+		roles []string
+		want  []string
+	}{
+		{"no roles", nil, []string{}},
+		{"only built-in", []string{PromptAdmin, PromptLecturer, CourseLecturer, CourseEditor, CourseStudent}, []string{}},
+		{"single custom", []string{"Tutor"}, []string{"Tutor"}},
+		{"student and custom", []string{CourseStudent, "Tutor"}, []string{"Tutor"}},
+		{"lecturer and custom", []string{CourseLecturer, "Tutor"}, []string{"Tutor"}},
+		{"multiple customs", []string{"Tutor", "Reviewer"}, []string{"Tutor", "Reviewer"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := customRoleNames(tt.roles)
+			if len(got) != len(tt.want) {
+				t.Fatalf("customRoleNames(%v) = %v; want %v", tt.roles, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("customRoleNames(%v) = %v; want %v", tt.roles, got, tt.want)
+				}
+			}
+		})
+	}
+}

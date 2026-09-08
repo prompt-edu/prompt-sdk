@@ -218,7 +218,8 @@ func TestBuildURL_NoExtraPaths(t *testing.T) {
 		CoursePhaseID: id,
 		EndpointPath:  "/my-endpoint/",
 	}
-	got := buildURL(res)
+	got, err := buildURL(res)
+	assert.NoError(t, err)
 	want := "https://example-prompt.com/api/course_phase/123e4567-e89b-12d3-a456-426614174000/my-endpoint"
 	assert.Equal(t, want, got)
 }
@@ -230,7 +231,8 @@ func TestBuildURL_WithExtraPaths(t *testing.T) {
 		CoursePhaseID: id,
 		EndpointPath:  "endpoint",
 	}
-	got := buildURL(res, "p1", "details")
+	got, err := buildURL(res, "p1", "details")
+	assert.NoError(t, err)
 	want := "http://localhost:8080/v1/course_phase/00000000-0000-0000-0000-000000000000/endpoint/p1/details"
 	assert.Equal(t, want, got)
 }
@@ -242,7 +244,53 @@ func TestBuildURL_WithInvalidBaseURL(t *testing.T) {
 		CoursePhaseID: uuid.New(),
 		EndpointPath:  "endpoint",
 	}
-	got := buildURL(res)
+	got, err := buildURL(res)
 	// Verify the function gracefully handles invalid URLs
+	assert.Error(t, err)
 	assert.Empty(t, got)
+}
+
+// TestBuildURL_RejectsUntrustedTargets covers the targets buildURL must refuse,
+// because reaching them would forward the caller's bearer token to a host the
+// SDK never meant to talk to.
+func TestBuildURL_RejectsUntrustedTargets(t *testing.T) {
+	cases := []struct {
+		name         string
+		baseURL      string
+		endpointPath string
+	}{
+		{"no scheme", "example-prompt.com/api", "endpoint"},
+		{"scheme relative", "//example-prompt.com/api", "endpoint"},
+		{"file scheme", "file:///etc/passwd", "endpoint"},
+		{"gopher scheme", "gopher://example-prompt.com", "endpoint"},
+		{"empty base URL", "", "endpoint"},
+		{"no host", "https:///api", "endpoint"},
+		{"embedded credentials", "https://user:pw@example-prompt.com", "endpoint"},
+		{"path traversal", "https://example-prompt.com/api", "../../../admin"},
+		{"path traversal mid path", "https://example-prompt.com/api", "endpoint/../../admin"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := buildURL(Resolution{
+				BaseURL:       c.baseURL,
+				CoursePhaseID: uuid.New(),
+				EndpointPath:  c.endpointPath,
+			})
+			assert.Error(t, err)
+			assert.Empty(t, got)
+		})
+	}
+}
+
+func TestResolveParticipation_RejectsUntrustedTarget(t *testing.T) {
+	got, err := ResolveParticipation("Bearer test-token", Resolution{
+		DtoName:       "scoreLevel",
+		BaseURL:       "file:///etc/passwd",
+		EndpointPath:  "endpoint",
+		CoursePhaseID: uuid.New(),
+	}, uuid.New())
+	assert.Error(t, err)
+	assert.Nil(t, got)
 }

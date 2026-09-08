@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -35,7 +36,11 @@ type PrevCoursePhaseData struct {
 
 // buildURL constructs the request URL for a given resolution.
 // extraPaths (such as a courseParticipationID) can be appended.
-func buildURL(resolution Resolution, extraPaths ...string) string {
+func buildURL(resolution Resolution, extraPaths ...string) (string, error) {
+	if err := validateResolutionTarget(resolution); err != nil {
+		return "", err
+	}
+
 	allPaths := append([]string{
 		"course_phase",
 		resolution.CoursePhaseID.String(),
@@ -44,10 +49,32 @@ func buildURL(resolution Resolution, extraPaths ...string) string {
 
 	u, err := url.JoinPath(resolution.BaseURL, allPaths...)
 	if err != nil {
-		log.Error("Failed to build URL: ", err)
-		return ""
+		return "", fmt.Errorf("failed to build resolution URL: %w", err)
 	}
-	return u
+	return u, nil
+}
+
+// validateResolutionTarget rejects resolution targets the caller's bearer token
+// must not be forwarded to. The binding tags on Resolution do not cover this:
+// resolutions are decoded with json.Unmarshal, which runs no validator.
+func validateResolutionTarget(resolution Resolution) error {
+	u, err := url.Parse(resolution.BaseURL)
+	if err != nil {
+		return fmt.Errorf("invalid resolution baseURL %q: %w", resolution.BaseURL, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("resolution baseURL %q must use http or https", resolution.BaseURL)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("resolution baseURL %q has no host", resolution.BaseURL)
+	}
+	if u.User != nil {
+		return fmt.Errorf("resolution baseURL %q must not embed credentials", resolution.BaseURL)
+	}
+	if slices.Contains(strings.Split(resolution.EndpointPath, "/"), "..") {
+		return fmt.Errorf("resolution endpointPath %q must not contain traversal segments", resolution.EndpointPath)
+	}
+	return nil
 }
 
 // parseAndValidate unmarshals the data into a map and ensures the expected key exists.
@@ -67,7 +94,10 @@ func parseAndValidate(data []byte, dtoName string) (interface{}, error) {
 
 // ResolveParticipation resolves data for a single course participation.
 func ResolveParticipation(authHeader string, resolution Resolution, courseParticipationID uuid.UUID) (interface{}, error) {
-	url := buildURL(resolution, courseParticipationID.String())
+	url, err := buildURL(resolution, courseParticipationID.String())
+	if err != nil {
+		return nil, err
+	}
 	data, err := FetchJSON(url, authHeader)
 	if err != nil {
 		return nil, err
@@ -78,7 +108,10 @@ func ResolveParticipation(authHeader string, resolution Resolution, coursePartic
 
 // ResolveCoursePhaseData resolves data for a course phase.
 func ResolveCoursePhaseData(authHeader string, resolution Resolution) (interface{}, error) {
-	url := buildURL(resolution)
+	url, err := buildURL(resolution)
+	if err != nil {
+		return nil, err
+	}
 	data, err := FetchJSON(url, authHeader)
 	if err != nil {
 		return nil, err
@@ -89,7 +122,10 @@ func ResolveCoursePhaseData(authHeader string, resolution Resolution) (interface
 
 // ResolveAllParticipations resolves data for all participations and returns a map keyed by courseParticipationID.
 func ResolveAllParticipations(authHeader string, resolution Resolution) (map[uuid.UUID]interface{}, error) {
-	url := buildURL(resolution)
+	url, err := buildURL(resolution)
+	if err != nil {
+		return nil, err
+	}
 	data, err := FetchJSON(url, authHeader)
 	if err != nil {
 		return nil, err

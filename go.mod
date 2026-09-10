@@ -3,7 +3,7 @@ module github.com/prompt-edu/prompt-sdk
 go 1.27.1
 
 require (
-	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/getsentry/sentry-go v0.49.0
 	github.com/getsentry/sentry-go/logrus v0.49.0
 	github.com/gin-gonic/gin v1.12.0

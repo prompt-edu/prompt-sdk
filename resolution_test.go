@@ -254,20 +254,27 @@ func TestBuildURL_WithInvalidBaseURL(t *testing.T) {
 // because reaching them would forward the caller's bearer token to a host the
 // SDK never meant to talk to.
 func TestBuildURL_RejectsUntrustedTargets(t *testing.T) {
+	const validBase = "https://example-prompt.com/api"
 	cases := []struct {
 		name         string
 		baseURL      string
 		endpointPath string
+		extraPaths   []string
 	}{
-		{"no scheme", "example-prompt.com/api", "endpoint"},
-		{"scheme relative", "//example-prompt.com/api", "endpoint"},
-		{"file scheme", "file:///etc/passwd", "endpoint"},
-		{"gopher scheme", "gopher://example-prompt.com", "endpoint"},
-		{"empty base URL", "", "endpoint"},
-		{"no host", "https:///api", "endpoint"},
-		{"embedded credentials", "https://user:pw@example-prompt.com", "endpoint"},
-		{"path traversal", "https://example-prompt.com/api", "../../../admin"},
-		{"path traversal mid path", "https://example-prompt.com/api", "endpoint/../../admin"},
+		{name: "no scheme", baseURL: "example-prompt.com/api", endpointPath: "endpoint"},
+		{name: "scheme relative", baseURL: "//example-prompt.com/api", endpointPath: "endpoint"},
+		{name: "file scheme", baseURL: "file:///etc/passwd", endpointPath: "endpoint"},
+		{name: "gopher scheme", baseURL: "gopher://example-prompt.com", endpointPath: "endpoint"},
+		{name: "empty base URL", baseURL: "", endpointPath: "endpoint"},
+		{name: "no host", baseURL: "https:///api", endpointPath: "endpoint"},
+		{name: "embedded credentials", baseURL: "https://user:pw@example-prompt.com", endpointPath: "endpoint"},
+		{name: "path traversal", baseURL: validBase, endpointPath: "../../../admin"},
+		{name: "path traversal mid path", baseURL: validBase, endpointPath: "endpoint/../../admin"},
+		{name: "encoded dot segments", baseURL: validBase, endpointPath: "%2e%2e/%2e%2e/admin"},
+		{name: "encoded separators", baseURL: validBase, endpointPath: "..%2f..%2fadmin"},
+		{name: "invalid escape", baseURL: validBase, endpointPath: "%zz"},
+		{name: "traversal in extra path", baseURL: validBase, endpointPath: "endpoint", extraPaths: []string{".."}},
+		{name: "encoded traversal in extra path", baseURL: validBase, endpointPath: "endpoint", extraPaths: []string{"%2e%2e"}},
 	}
 
 	for _, c := range cases {
@@ -277,7 +284,7 @@ func TestBuildURL_RejectsUntrustedTargets(t *testing.T) {
 				BaseURL:       c.baseURL,
 				CoursePhaseID: uuid.New(),
 				EndpointPath:  c.endpointPath,
-			})
+			}, c.extraPaths...)
 			assert.Error(t, err)
 			assert.Empty(t, got)
 		})

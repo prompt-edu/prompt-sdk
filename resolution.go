@@ -37,7 +37,8 @@ type PrevCoursePhaseData struct {
 // buildURL constructs the request URL for a given resolution.
 // extraPaths (such as a courseParticipationID) can be appended.
 func buildURL(resolution Resolution, extraPaths ...string) (string, error) {
-	if err := validateResolutionTarget(resolution); err != nil {
+	base, err := validateResolutionTarget(resolution)
+	if err != nil {
 		return "", err
 	}
 
@@ -47,34 +48,44 @@ func buildURL(resolution Resolution, extraPaths ...string) (string, error) {
 		getEndpointPath(resolution.EndpointPath),
 	}, extraPaths...)
 
-	u, err := url.JoinPath(resolution.BaseURL, allPaths...)
-	if err != nil {
-		return "", fmt.Errorf("failed to build resolution URL: %w", err)
+	for _, path := range allPaths {
+		if hasTraversalSegment(path) {
+			return "", fmt.Errorf("resolution path %q must not contain traversal segments", path)
+		}
 	}
-	return u, nil
+
+	return base.JoinPath(allPaths...).String(), nil
 }
 
 // validateResolutionTarget rejects resolution targets the caller's bearer token
 // must not be forwarded to. The binding tags on Resolution do not cover this:
 // resolutions are decoded with json.Unmarshal, which runs no validator.
-func validateResolutionTarget(resolution Resolution) error {
+func validateResolutionTarget(resolution Resolution) (*url.URL, error) {
 	u, err := url.Parse(resolution.BaseURL)
 	if err != nil {
-		return fmt.Errorf("invalid resolution baseURL %q: %w", resolution.BaseURL, err)
+		return nil, fmt.Errorf("invalid resolution baseURL %q: %w", resolution.BaseURL, err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("resolution baseURL %q must use http or https", resolution.BaseURL)
+		return nil, fmt.Errorf("resolution baseURL %q must use http or https", resolution.BaseURL)
 	}
 	if u.Host == "" {
-		return fmt.Errorf("resolution baseURL %q has no host", resolution.BaseURL)
+		return nil, fmt.Errorf("resolution baseURL %q has no host", resolution.BaseURL)
 	}
 	if u.User != nil {
-		return fmt.Errorf("resolution baseURL %q must not embed credentials", resolution.BaseURL)
+		return nil, fmt.Errorf("resolution baseURL %q must not embed credentials", resolution.BaseURL)
 	}
-	if slices.Contains(strings.Split(resolution.EndpointPath, "/"), "..") {
-		return fmt.Errorf("resolution endpointPath %q must not contain traversal segments", resolution.EndpointPath)
+	return u, nil
+}
+
+// hasTraversalSegment reports whether a path holds a ".." segment, which
+// url.JoinPath would resolve, moving the request off the intended path.
+// Separators are decoded first, so "..%2f.." and "%2e%2e" are caught too.
+func hasTraversalSegment(path string) bool {
+	decoded, err := url.PathUnescape(path)
+	if err != nil {
+		return true
 	}
-	return nil
+	return slices.Contains(strings.Split(decoded, "/"), "..")
 }
 
 // parseAndValidate unmarshals the data into a map and ensures the expected key exists.

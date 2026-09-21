@@ -20,10 +20,10 @@ func RegisterCopyModule(group *gin.RouterGroup, handler PhaseCopyHandler, roles 
 }
 
 // RegisterPhaseDeletionModule wires a phase deletion module onto the given router group: it
-// registers the standardized /delete endpoint. The endpoint protects itself (PromptAdmin and
-// CourseLecturer, mirroring the core server), so no roles are taken here. It is named after the
-// phase.deletion capability to keep it apart from the privacy deletion handled by
-// RegisterPrivacyModule.
+// registers the standardized deletion endpoint, DELETE on the course phase route itself. The
+// endpoint protects itself (PromptAdmin and CourseLecturer, mirroring the core server), so no
+// roles are taken here. It is named after the phase.deletion capability to keep it apart from the
+// privacy deletion handled by RegisterPrivacyModule.
 //
 // The group's path must contain ":coursePhaseID" (e.g. ".../api/course_phase/:coursePhaseID"),
 // as required by RegisterCoursePhaseDeletionEndpoint.

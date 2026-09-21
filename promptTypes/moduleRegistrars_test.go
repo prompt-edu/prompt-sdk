@@ -52,7 +52,10 @@ func TestRegisterPhaseDeletionModule(t *testing.T) {
 		RegisterPhaseDeletionModule(g, stubDeletionHandler{})
 	})
 
-	require.True(t, routes["POST /course_phase/:coursePhaseID/delete"])
+	// The agreed route scheme is DELETE on the course phase route itself, mirroring the core
+	// server's DELETE /api/course_phase/:coursePhaseID, not a POST /delete sub-path.
+	require.True(t, routes["DELETE /course_phase/:coursePhaseID"])
+	require.False(t, routes["POST /course_phase/:coursePhaseID/delete"])
 }
 
 func TestRegisterPrivacyModuleWithDeletion(t *testing.T) {

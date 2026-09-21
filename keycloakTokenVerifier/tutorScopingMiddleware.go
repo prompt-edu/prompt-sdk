@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/prompt-edu/prompt-sdk/internal/login"
 )
 
 // TutorTeamIDKey is the gin context key under which the resolved tutor team ID is stored.
@@ -47,8 +47,8 @@ func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
 			return
 		}
 
-		login := strings.TrimSpace(strings.ToLower(tokenUser.UniversityLogin))
-		if login == "" {
+		universityLogin := login.Normalize(tokenUser.UniversityLogin)
+		if universityLogin == "" {
 			c.Next()
 			return
 		}
@@ -59,7 +59,7 @@ func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
 			return
 		}
 
-		teamID, err := resolver.ResolveTutorTeam(c.Request.Context(), coursePhaseID, login)
+		teamID, err := resolver.ResolveTutorTeam(c.Request.Context(), coursePhaseID, universityLogin)
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.Next()
 			return

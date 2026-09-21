@@ -53,6 +53,9 @@ type pgxResolver struct {
 //
 // Only course_phase_id, university_login and team_id are read. Store logins as
 // NormalizeLogin returns them: the lookup is an exact match so it can use the index.
+// Store NULL, never the empty string, for a tutor without a login. The partial
+// index does not exclude the empty string, so two login-less tutors of one phase
+// would collide, and the resolver never matches an empty login anyway.
 func NewPgxResolver(pool *pgxpool.Pool, opts ...ResolverOption) Resolver {
 	if pool == nil {
 		panic("tutorscope.NewPgxResolver: pool must not be nil")

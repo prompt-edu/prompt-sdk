@@ -22,10 +22,9 @@
 package tutorscope
 
 import (
-	"strings"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/prompt-edu/prompt-sdk/internal/login"
 	"github.com/prompt-edu/prompt-sdk/keycloakTokenVerifier"
 )
 
@@ -58,7 +57,8 @@ func TeamID(c *gin.Context) (uuid.UUID, bool) {
 // NormalizeLogin puts a university login into the form tutor rows are stored in.
 // Services must apply it when writing tutor records, so the resolver's lookup and
 // the unique index on (course_phase_id, university_login) agree with the token
-// login the middleware resolves against.
-func NormalizeLogin(login string) string {
-	return strings.TrimSpace(strings.ToLower(login))
+// login the middleware resolves against. Store NULL rather than the empty string
+// when it returns "": see NewPgxResolver.
+func NormalizeLogin(universityLogin string) string {
+	return login.Normalize(universityLogin)
 }

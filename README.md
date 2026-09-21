@@ -55,10 +55,19 @@ Apply a confined scope inside the mutating statement rather than reading the cur
 authorization and mutation are atomic:
 
 ```go
-access, err := tutorscope.AuthorizeWrite(c)   // ErrWriteDenied -> 403, ErrScopingNotApplied -> 500
-if err == nil && !access.AllowsTeam(targetTeam) {
-    err = tutorscope.ErrWriteDenied           // a tutor may not write into a team that is not theirs
+access, err := tutorscope.AuthorizeWrite(c)
+if err != nil {
+    // ErrWriteDenied -> 403, ErrNotAuthenticated -> 401,
+    // ErrScopingNotApplied / ErrCourseRolesNotResolved -> 500
+    handleAuthError(c, err)
+    return
 }
+if !access.AllowsTeam(targetTeam) {
+    // a tutor may not write into a team that is not theirs
+    handleAuthError(c, tutorscope.ErrWriteDenied)
+    return
+}
+
 rows, err := queries.MoveParticipant(ctx, MoveParticipantParams{
     TeamID:         targetTeam,
     ExpectedTeamID: access.Guard(),           // NULL when unrestricted
@@ -66,9 +75,19 @@ rows, err := queries.MoveParticipant(ctx, MoveParticipantParams{
 // rows == 0 for a confined caller means the row moved out of their team: ErrWriteDenied
 ```
 
+Never skip the error check: on any failure `AuthorizeWrite` returns the zero `Access`, which grants
+nothing, but only if you actually stop.
+
+Routes using `AuthorizeWrite` must **not** list `PromptLecturer` among their allowed roles. The
+authentication middleware admits such a caller on that global role alone, before it resolves who
+they are in this course, which leaves a course lecturer indistinguishable from a tutor;
+`AuthorizeWrite` reports that as `ErrCourseRolesNotResolved`. Course lecturers are unaffected by
+dropping it: they are admitted through `CourseLecturer`.
+
 Supply the tutor lookup either by implementing `tutorscope.Resolver` over your own queries, or with
 `tutorscope.NewPgxResolver(pool)` against a `tutor` table with the canonical shape documented on that
-constructor. Store logins as `tutorscope.NormalizeLogin` returns them.
+constructor. Store logins as `tutorscope.NormalizeLogin` returns them, and store `NULL` rather than
+the empty string for a tutor without a login.
 
 ## Resolution helpers
 

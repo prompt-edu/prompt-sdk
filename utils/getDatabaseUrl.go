@@ -1,8 +1,9 @@
 package utils
 
-import "fmt"
-
-const defaultDBPassword = "prompt-postgres"
+import (
+	"fmt"
+	"net/url"
+)
 
 // GetDatabaseURL constructs a PostgreSQL connection string from environment variables.
 // It provides sensible defaults for local development.
@@ -19,20 +20,18 @@ func GetDatabaseURLForPrefix(envPrefix, defaultPort string) string {
 	return buildDatabaseURL(GetEnv("DB_HOST_"+envPrefix, "localhost"), GetEnv("DB_PORT_"+envPrefix, defaultPort))
 }
 
+// buildDatabaseURL uses net/url so a credential containing a reserved character (/, ?, #, %,
+// space) is percent-escaped rather than producing a URL that pgx and migrate reject.
 func buildDatabaseURL(host, port string) string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s&TimeZone=%s",
-		GetEnv("DB_USER", "prompt-postgres"),
-		databasePassword(),
-		host,
-		port,
-		GetEnv("DB_NAME", "prompt"),
-		GetEnv("SSL_MODE", "disable"),
-		GetEnv("DB_TIMEZONE", "Europe/Berlin"),
-	)
-}
-
-// databasePassword is the single source for the password, so the connection string and the
-// mask applied to migration output cannot drift apart and leak the credential.
-func databasePassword() string {
-	return GetEnv("DB_PASSWORD", defaultDBPassword)
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(GetEnv("DB_USER", "prompt-postgres"), GetEnv("DB_PASSWORD", "prompt-postgres")),
+		Host:   fmt.Sprintf("%s:%s", host, port),
+		Path:   "/" + GetEnv("DB_NAME", "prompt"),
+	}
+	query := u.Query()
+	query.Set("sslmode", GetEnv("SSL_MODE", "disable"))
+	query.Set("TimeZone", GetEnv("DB_TIMEZONE", "Europe/Berlin"))
+	u.RawQuery = query.Encode()
+	return u.String()
 }

@@ -13,9 +13,8 @@ import (
 // with the database password masked, so the credential never reaches the logs even when migrate
 // echoes the connection string.
 func RunMigrations(databaseURL, migrationPath string) error {
-	password := databasePassword()
-	stdout := &maskingWriter{out: os.Stdout, password: password}
-	stderr := &maskingWriter{out: os.Stderr, password: password}
+	stdout := &maskingWriter{out: os.Stdout}
+	stderr := &maskingWriter{out: os.Stderr}
 	defer stdout.flush()
 	defer stderr.flush()
 
@@ -29,11 +28,10 @@ func RunMigrations(databaseURL, migrationPath string) error {
 }
 
 // maskingWriter forwards output with the password masked, holding back an incomplete trailing
-// line so a password straddling two writes cannot slip through unmasked.
+// line so a connection string straddling two writes cannot slip through unmasked.
 type maskingWriter struct {
-	out      io.Writer
-	password string
-	pending  []byte
+	out     io.Writer
+	pending []byte
 }
 
 func (w *maskingWriter) Write(p []byte) (int, error) {
@@ -43,9 +41,7 @@ func (w *maskingWriter) Write(p []byte) (int, error) {
 		if end < 0 {
 			return len(p), nil
 		}
-		if err := w.emit(w.pending[:end+1]); err != nil {
-			return 0, err
-		}
+		w.emit(w.pending[:end+1])
 		w.pending = w.pending[end+1:]
 	}
 }
@@ -54,11 +50,11 @@ func (w *maskingWriter) flush() {
 	if len(w.pending) == 0 {
 		return
 	}
-	_ = w.emit(w.pending)
+	w.emit(w.pending)
 	w.pending = nil
 }
 
-func (w *maskingWriter) emit(line []byte) error {
-	_, err := io.WriteString(w.out, SanitizeDatabaseURL(string(line), w.password))
-	return err
+func (w *maskingWriter) emit(line []byte) {
+	// a lost log line must not abort the migration, as writing to os.Stdout directly never could
+	_, _ = io.WriteString(w.out, SanitizeDatabaseURL(string(line)))
 }

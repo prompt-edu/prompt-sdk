@@ -2,8 +2,13 @@ package promptSDK
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -16,6 +21,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	coursePhasePath = "/course_phase/:coursePhaseID"
+	migrationsPath  = "./db/migration"
+
+	// dbPingTimeout has to cover a cold pgxpool opening its first connection, not just a round trip.
+	dbPingTimeout   = 3 * time.Second
+	shutdownTimeout = 10 * time.Second
+)
+
 // ServiceOptions configures Bootstrap for a single phase service. Only RegisterRoutes genuinely
 // varies between services; everything else is identical wiring captured as data.
 type ServiceOptions struct {
@@ -25,10 +39,6 @@ type ServiceOptions struct {
 	// BasePath is the router group prefix, verbatim (e.g. "/assessment/api"). Not derived from
 	// ServiceName because the existing services are inconsistent (leading slash, naming).
 	BasePath string
-
-	// CoursePhasePath is the sub-group nested under BasePath for phase-scoped routes.
-	// Defaults to "/course_phase/:coursePhaseID".
-	CoursePhasePath string
 
 	// DBEnvPrefix selects the per-phase DB_HOST_<PREFIX>/DB_PORT_<PREFIX> vars (e.g. "ASSESSMENT").
 	DBEnvPrefix string
@@ -42,35 +52,45 @@ type ServiceOptions struct {
 	// DefaultAddress is the fallback listen address when SERVER_ADDRESS is unset (e.g. "localhost:8085").
 	DefaultAddress string
 
-	// MigrationsPath is the golang-migrate source path. Defaults to "./db/migration".
-	MigrationsPath string
-
 	// Capabilities is reported by the /info endpoint. Use the promptTypes.Capability* keys.
-	// Bootstrap adds promptTypes.CapabilityAuditLog itself, reflecting the audit configuration.
+	// Bootstrap adds promptTypes.CapabilityAuditLog itself, reflecting AUDIT_ENABLED.
 	Capabilities map[string]bool
 
 	// RegisterRoutes wires the service's own modules onto the router groups. It receives the base
-	// api group, the phase-scoped group, and the connection pool (the service builds its own
-	// db.New(conn) — the SDK cannot reference a service-specific Queries type).
+	// api group, the phase-scoped group, and the connection pool. The service builds its own
+	// db.New(conn), because the SDK cannot reference a service-specific Queries type.
 	RegisterRoutes func(api, coursePhase *gin.RouterGroup, conn *pgxpool.Pool) error
+}
+
+func (o ServiceOptions) validate() error {
+	for _, field := range []struct{ name, value string }{
+		{"ServiceName", o.ServiceName},
+		{"BasePath", o.BasePath},
+		{"DBEnvPrefix", o.DBEnvPrefix},
+		{"DefaultDBPort", o.DefaultDBPort},
+		{"DefaultAddress", o.DefaultAddress},
+	} {
+		if field.value == "" {
+			return fmt.Errorf("ServiceOptions.%s is required", field.name)
+		}
+	}
+	if o.RegisterRoutes == nil {
+		return errors.New("ServiceOptions.RegisterRoutes is required")
+	}
+	return nil
 }
 
 // Bootstrap composes the phase-service startup sequence that every service copies today:
 // Sentry -> DB URL -> migrations -> pgx pool -> gin + Sentry + CORS + audit -> route groups ->
-// Keycloak -> service routes -> /info health endpoint -> run. It blocks in router.Run until the
-// server exits, and returns an error instead of calling log.Fatal:
+// Keycloak -> service routes -> /info health endpoint -> run. It blocks until the process is
+// signalled, and returns an error instead of calling log.Fatal:
 //
 //	if err := promptSDK.Bootstrap(opts); err != nil {
 //	    log.Fatal(err)
 //	}
 func Bootstrap(opts ServiceOptions) error {
-	coursePhasePath := opts.CoursePhasePath
-	if coursePhasePath == "" {
-		coursePhasePath = "/course_phase/:coursePhaseID"
-	}
-	migrationsPath := opts.MigrationsPath
-	if migrationsPath == "" {
-		migrationsPath = "./db/migration"
+	if err := opts.validate(); err != nil {
+		return err
 	}
 
 	sentryEnabled := GetEnv("SENTRY_ENABLED", "false") == "true"
@@ -85,8 +105,7 @@ func Bootstrap(opts ServiceOptions) error {
 		return err
 	}
 
-	ctx := context.Background()
-	conn, err := pgxpool.New(ctx, databaseURL)
+	conn, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
@@ -97,9 +116,7 @@ func Bootstrap(opts ServiceOptions) error {
 		router.Use(sentrygin.New(sentrygin.Options{}))
 	}
 	router.Use(CORSMiddleware(GetEnv("CORE_HOST", "http://localhost:3000")))
-
-	auditSink := audit.NewCoreSink(utils.GetCoreUrl(), opts.ServiceName)
-	router.Use(audit.Middleware(auditSink, audit.WithSourceService(opts.ServiceName)))
+	router.Use(audit.Middleware(audit.NewCoreSink(utils.GetCoreUrl(), opts.ServiceName), audit.WithSourceService(opts.ServiceName)))
 
 	api := router.Group(opts.BasePath)
 	coursePhase := api.Group(coursePhasePath)
@@ -108,27 +125,51 @@ func Bootstrap(opts ServiceOptions) error {
 		return err
 	}
 
-	if opts.RegisterRoutes != nil {
-		if err := opts.RegisterRoutes(api, coursePhase, conn); err != nil {
-			return fmt.Errorf("failed to register routes: %w", err)
-		}
+	if err := opts.RegisterRoutes(api, coursePhase, conn); err != nil {
+		return fmt.Errorf("failed to register routes: %w", err)
 	}
 
 	capabilities := make(map[string]bool, len(opts.Capabilities)+1)
 	maps.Copy(capabilities, opts.Capabilities)
-	capabilities[promptTypes.CapabilityAuditLog] = auditSink != nil
+	capabilities[promptTypes.CapabilityAuditLog] = audit.Enabled()
 
 	promptTypes.RegisterInfoEndpoint(api, promptTypes.ServiceInfo{
 		ServiceName:  opts.ServiceName,
 		Version:      GetEnv("SERVER_IMAGE_TAG", ""),
 		Capabilities: capabilities,
 	}, func() bool {
-		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		pingCtx, cancel := context.WithTimeout(context.Background(), dbPingTimeout)
 		defer cancel()
 		return conn.Ping(pingCtx) == nil
 	})
 
 	serverAddress := GetEnv("SERVER_ADDRESS", opts.DefaultAddress)
+	if serverAddress == "" {
+		// an empty address makes http.Server listen on port 80 instead of failing
+		serverAddress = opts.DefaultAddress
+	}
 	log.Infof("%s server started on %s", opts.ServiceName, serverAddress)
-	return router.Run(serverAddress)
+	return serve(router, serverAddress)
+}
+
+// serve runs the server until SIGINT or SIGTERM, then drains in-flight requests, so the
+// connection pool close and the Sentry flush that Bootstrap defers actually run.
+func serve(handler http.Handler, address string) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	server := &http.Server{Addr: address, Handler: handler}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Warnf("graceful shutdown failed: %v", err)
+		}
+	}()
+
+	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }

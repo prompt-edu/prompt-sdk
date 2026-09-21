@@ -9,7 +9,7 @@ import (
 
 func TestMaskingWriterMasksPasswordSplitAcrossWrites(t *testing.T) {
 	var out bytes.Buffer
-	w := &maskingWriter{out: &out, password: "s3cr3t"}
+	w := &maskingWriter{out: &out}
 
 	_, err := w.Write([]byte("error: postgres://prompt-postgres:s3c"))
 	require.NoError(t, err)
@@ -22,10 +22,10 @@ func TestMaskingWriterMasksPasswordSplitAcrossWrites(t *testing.T) {
 
 func TestMaskingWriterFlushesTrailingLine(t *testing.T) {
 	var out bytes.Buffer
-	w := &maskingWriter{out: &out, password: "s3cr3t"}
+	w := &maskingWriter{out: &out}
 
-	_, err := w.Write([]byte("done s3cr3t"))
+	_, err := w.Write([]byte("done postgres://prompt-postgres:s3cr3t@localhost:5432/prompt"))
 	require.NoError(t, err)
 	w.flush()
-	require.Equal(t, "done ***", out.String())
+	require.Equal(t, "done postgres://prompt-postgres:***@localhost:5432/prompt", out.String())
 }

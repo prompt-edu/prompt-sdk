@@ -1,14 +1,14 @@
 package utils
 
-import "strings"
+import "regexp"
 
-// SanitizeDatabaseURL masks occurrences of password in input with "***", so a database URL (or
-// migration tool output that echoes it) can be logged without leaking the credential. An empty
-// password returns input unchanged. It masks the raw password form, matching how GetDatabaseURL /
-// GetDatabaseURLForPrefix embed the password verbatim.
-func SanitizeDatabaseURL(input, password string) string {
-	if password == "" {
-		return input
-	}
-	return strings.ReplaceAll(input, password, "***")
+// an escaped password cannot contain "@", "/" or whitespace, so the match stays inside the userinfo
+var databaseURLCredential = regexp.MustCompile(`(postgres(?:ql)?://[^:@/\s]+:)[^@/\s]*(@)`)
+
+// SanitizeDatabaseURL masks the password of every PostgreSQL URL in input with "***", so a
+// connection string (or tool output echoing one) can be logged without leaking the credential.
+// It masks the URL segment rather than the password value, so an escaped password is covered too
+// and an unrelated substring that happens to equal the password is not redacted.
+func SanitizeDatabaseURL(input string) string {
+	return databaseURLCredential.ReplaceAllString(input, "${1}***${2}")
 }

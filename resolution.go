@@ -181,7 +181,7 @@ func FetchAndMergeCourseParticipationWithResolution(coreURL string, authHeader s
 			if participation.PrevData == nil {
 				participation.PrevData = make(promptTypes.MetaData)
 			}
-			participation.PrevData[res.DtoName] = data
+			participation.PrevData[res.DtoName] = resolvedData
 			cppWithRes.Participation = participation
 		}
 	}

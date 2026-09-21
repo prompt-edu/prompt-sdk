@@ -1,6 +1,9 @@
 package promptSDK
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin/binding"
@@ -245,4 +248,56 @@ func TestBuildURL_WithInvalidBaseURL(t *testing.T) {
 	got := buildURL(res)
 	// Verify the function gracefully handles invalid URLs
 	assert.Empty(t, got)
+}
+
+// TestFetchAndMergeCourseParticipationWithResolutionStoresResolvedPayload guards the payload that
+// ends up in PrevData. The function used to store the raw bytes of the enclosing core response
+// instead of the payload returned by ResolveParticipation, which gave every resolution key the same
+// unusable blob.
+func TestFetchAndMergeCourseParticipationWithResolutionStoresResolvedPayload(t *testing.T) {
+	coursePhaseID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	courseParticipationID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174001")
+
+	const dtoName = "scoreLevel"
+	resolvedPayload := map[string]interface{}{"scoreLevel": "veryGood", "reviewed": true}
+
+	var server *httptest.Server
+	mux := http.NewServeMux()
+
+	// Core returns the participation together with the resolutions to follow.
+	mux.HandleFunc("/api/course_phases/"+coursePhaseID.String()+"/participations/"+courseParticipationID.String(),
+		func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"participation": map[string]interface{}{
+					"coursePhaseID":         coursePhaseID,
+					"courseParticipationID": courseParticipationID,
+					"passStatus":            "not_assessed",
+				},
+				"resolutions": []map[string]interface{}{{
+					"dtoName":       dtoName,
+					"baseURL":       server.URL,
+					"endpointPath":  "resolve",
+					"coursePhaseID": coursePhaseID,
+				}},
+			})
+		})
+
+	// The resolved phase module returns the payload keyed by the DTO name.
+	mux.HandleFunc("/course_phase/"+coursePhaseID.String()+"/resolve/"+courseParticipationID.String(),
+		func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{dtoName: resolvedPayload})
+		})
+
+	server = httptest.NewServer(mux)
+	defer server.Close()
+
+	participation, err := FetchAndMergeCourseParticipationWithResolution(
+		server.URL, "Bearer test-token", coursePhaseID, courseParticipationID)
+	assert.NoError(t, err)
+
+	assert.Equal(t, resolvedPayload, participation.PrevData[dtoName])
+
+	// The old behavior stored the []byte body of the core response.
+	_, isRawBytes := participation.PrevData[dtoName].([]byte)
+	assert.False(t, isRawBytes, "PrevData must hold the resolved payload, not the raw response bytes")
 }

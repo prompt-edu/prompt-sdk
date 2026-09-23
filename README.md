@@ -52,6 +52,7 @@ Install via your Go module tooling (module path: github.com/prompt-edu/prompt-sd
 ## Utilities and validation
 
 - CORS middleware; environment helper; DB transaction rollback helper; simple JSON fetch helper
+- Error responses: `utils.HandleError` sends a `utils.ErrorResponse` (`{"error": "..."}`), which swagger annotations can reference as the failure body
 - Validation integrated with Gin: matriculation numbers and university logins (TUM ID format)
 
 ## Testing

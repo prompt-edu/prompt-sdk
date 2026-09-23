@@ -133,6 +133,7 @@ func TestAuthorizationMiddleware_StatusCodes(t *testing.T) {
 		{"lecturer route keeps 401 when core rejects the token", []string{CourseLecturer}, nil, http.StatusUnauthorized, "", http.StatusUnauthorized},
 		{"student route grants same-course student", []string{CourseStudent}, nil, http.StatusOK, `{"isStudentOfCoursePhase":true}`, http.StatusOK},
 		{"student route forbids cross-course student", []string{CourseStudent}, nil, http.StatusForbidden, `{"error":"Access denied"}`, http.StatusForbidden},
+		{"student route keeps 401 when core rejects the token", []string{CourseStudent}, nil, http.StatusUnauthorized, "", http.StatusUnauthorized},
 	}
 
 	for _, tt := range tests {

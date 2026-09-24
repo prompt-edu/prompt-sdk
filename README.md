@@ -33,6 +33,7 @@ Install via your Go module tooling (module path: github.com/prompt-edu/prompt-sd
 - Course-phase roles (resolved via Core using `:coursePhaseID`): "Lecturer", "Editor", "Student"
 - Custom roles supported via a prefix provided by Core; any additional role names can be checked against that prefix
 - The middleware verifies standard OIDC fields and attaches a token user to the request context
+- Missing or invalid credentials are rejected with 401; an authenticated user without an allowed role is rejected with 403
 
 ## Tutor team scoping
 

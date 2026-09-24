@@ -15,14 +15,24 @@ import (
 //     (any value other than "Admin" or "Student"), then it calls GetLecturerAndEditorRole.
 //     For custom roles the middleware checks if the user's roles include customRolePrefix+customRole.
 //   - If allowedRoles contains "Student", then it calls IsStudentOfCoursePhaseMiddleware.
+//
+// Missing or invalid credentials abort with 401. An authenticated caller
+// without any of the allowed roles aborts with 403.
 func AuthenticationMiddleware(allowedRoles ...string) gin.HandlerFunc {
+	authorize := authorizationMiddleware(allowedRoles...)
 	return func(c *gin.Context) {
 		// Always run Keycloak middleware first.
 		KeycloakMiddleware()(c)
 		if c.IsAborted() {
 			return
 		}
+		authorize(c)
+	}
+}
 
+// authorizationMiddleware checks the TokenUser set by KeycloakMiddleware against allowedRoles.
+func authorizationMiddleware(allowedRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		allowedSet := buildAllowedRolesSet(allowedRoles)
 
 		tokenUser, ok := GetTokenUser(c)
@@ -42,7 +52,7 @@ func AuthenticationMiddleware(allowedRoles ...string) gin.HandlerFunc {
 
 		// This allows to use the middleware without coursePhaseID, if only PROMPT_Admin & PROMPT_Lecturer are allowed.
 		if onlyContainsAdminAndLecturer(allowedSet) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "could not authenticate"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
 
@@ -103,7 +113,7 @@ func AuthenticationMiddleware(allowedRoles ...string) gin.HandlerFunc {
 		}
 
 		// Access denied.
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "could not authenticate"})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 	}
 }
 

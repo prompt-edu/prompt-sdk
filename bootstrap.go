@@ -29,6 +29,9 @@ const (
 	// dbPingTimeout has to cover a cold pgxpool opening its first connection, not just a round trip.
 	dbPingTimeout   = 3 * time.Second
 	shutdownTimeout = 10 * time.Second
+
+	// readHeaderTimeout bounds how long a client may take to send the request headers (Slowloris).
+	readHeaderTimeout = 10 * time.Second
 )
 
 // ServiceOptions configures Bootstrap for a single phase service. Only RegisterRoutes genuinely
@@ -163,7 +166,7 @@ func serve(handler http.Handler, address string) error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: address, Handler: handler}
+	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: readHeaderTimeout}
 	return serveUntil(ctx, server, listener)
 }
 

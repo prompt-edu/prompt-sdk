@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -158,18 +159,36 @@ func serve(handler http.Handler, address string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return err
+	}
 	server := &http.Server{Addr: address, Handler: handler}
+	return serveUntil(ctx, server, listener)
+}
+
+// serveUntil serves on listener until ctx is done and returns only once Shutdown has finished
+// draining in-flight requests.
+func serveUntil(ctx context.Context, server *http.Server, listener net.Listener) error {
+	ctx, cancel := context.WithCancel(ctx)
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancelShutdown()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Warnf("graceful shutdown failed: %v", err)
 		}
 	}()
 
-	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		return err
+	err := server.Serve(listener)
+	// Serve returns ErrServerClosed as soon as Shutdown starts, not when it finishes, so wait for
+	// the shutdown goroutine. On any other error, cancel wakes that goroutine so it cannot leak.
+	cancel()
+	<-shutdownDone
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
 	}
-	return nil
+	return err
 }

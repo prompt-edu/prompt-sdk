@@ -52,7 +52,8 @@ type ServiceInfo struct {
 	ServiceName string `json:"serviceName"`
 
 	// Version is the deployed version or image tag of the service. Optional.
-	// Set this from the SERVER_IMAGE_TAG environment variable.
+	// Set this from the SERVER_IMAGE_TAG environment variable, and pass the same value to
+	// utils.InitSentry so Sentry releases match the version reported here.
 	Version string `json:"version,omitempty"`
 
 	// Healthy reports whether the service is fully operational at the time of the request.

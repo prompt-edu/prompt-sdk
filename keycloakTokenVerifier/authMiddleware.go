@@ -80,15 +80,9 @@ func authorizationMiddleware(allowedRoles ...string) gin.HandlerFunc {
 				return
 			}
 
-			if containsCustomRoleName(allowedRoles...) {
-				prefix := tokenUser.CustomRolePrefix
-
-				for _, role := range allowedRoles {
-					if userRoles[prefix+role] {
-						c.Next()
-						return
-					}
-				}
+			if matchesCustomRole(tokenUser.CustomRolePrefix, allowedRoles, tokenUser.Roles) {
+				c.Next()
+				return
 			}
 		}
 
@@ -143,14 +137,30 @@ func requiresLecturerOrCustom(allowedSet map[string]struct{}, roles []string) bo
 }
 
 func containsCustomRoleName(allowedRoles ...string) bool {
-	nonCustomRoles := []string{PromptAdmin, PromptLecturer, CourseLecturer, CourseEditor, CourseStudent}
+	return slices.ContainsFunc(allowedRoles, isCustomRole)
+}
 
+// builtInRoles are the roles the middleware resolves itself. They must never be
+// matched against the course role prefix, which is reserved for custom group roles.
+var builtInRoles = []string{PromptAdmin, PromptLecturer, CourseLecturer, CourseEditor, CourseStudent}
+
+func isCustomRole(role string) bool {
+	return !slices.Contains(builtInRoles, role)
+}
+
+// matchesCustomRole reports whether the user holds one of the course-specific
+// group roles the route declares. Built-in roles are skipped because core
+// resolves those itself, and an empty prefix would degrade the lookup to an
+// un-prefixed role match.
+func matchesCustomRole(prefix string, allowedRoles []string, userRoles map[string]bool) bool {
+	if prefix == "" {
+		return false
+	}
 	for _, role := range allowedRoles {
-		if !slices.Contains(nonCustomRoles, role) {
+		if isCustomRole(role) && userRoles[prefix+role] {
 			return true
 		}
 	}
-
 	return false
 }
 

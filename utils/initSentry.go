@@ -9,10 +9,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func InitSentry(sentryDsn string) error {
+func InitSentry(sentryDsn string, release ...string) error {
 	if sentryDsn == "" {
 		log.Info("Sentry DSN not configured, skipping initialization")
 		return nil
+	}
+
+	var sentryRelease string
+	if len(release) > 0 {
+		sentryRelease = release[0]
 	}
 
 	transport := sentry.NewHTTPTransport()
@@ -25,6 +30,7 @@ func InitSentry(sentryDsn string) error {
 
 	if err := sentry.Init(sentry.ClientOptions{
 		Dsn:              sentryDsn,
+		Release:          sentryRelease,
 		Environment:      GetEnv("ENVIRONMENT", "development"),
 		Debug:            false,
 		Transport:        transport,
@@ -58,7 +64,7 @@ func InitSentry(sentryDsn string) error {
 		logHook.Flush(5 * time.Second)
 	})
 
-	log.Info("Sentry initialized successfully")
+	log.Infof("Sentry initialized successfully (release: %s)", client.Options().Release)
 	return nil
 }
 

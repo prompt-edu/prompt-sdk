@@ -53,21 +53,10 @@ func SetupTestDB[Q any](ctx context.Context, sqlDumpPath string, queryFactory fu
 	}
 	dbURL := fmt.Sprintf("postgres://testuser:testpass@%s:%s/prompt?sslmode=disable", host, port.Port())
 
-	/// Try a short retry loop just in case the network is slower on CI
-	var conn *pgxpool.Pool
-	for i := 0; i < 5; i++ {
-		conn, err = pgxpool.New(ctx, dbURL)
-		if err == nil {
-			if pingErr := conn.Ping(ctx); pingErr == nil {
-				break
-			}
-			conn.Close()
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
+	conn, err := connect(ctx, dbURL)
 	if err != nil {
 		_ = container.Terminate(ctx)
-		return nil, nil, fmt.Errorf("failed to connect to the database after retries: %w", err)
+		return nil, nil, err
 	}
 
 	// Run the SQL dump
@@ -90,6 +79,22 @@ func SetupTestDB[Q any](ctx context.Context, sqlDumpPath string, queryFactory fu
 		Conn:    conn,
 		Queries: queries,
 	}, cleanup, nil
+}
+
+func connect(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
+	var lastErr error
+	for range 5 {
+		conn, err := pgxpool.New(ctx, dbURL)
+		if err == nil {
+			if err = conn.Ping(ctx); err == nil {
+				return conn, nil
+			}
+			conn.Close()
+		}
+		lastErr = err
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("failed to connect to the database after retries: %w", lastErr)
 }
 
 func runSQLDump(ctx context.Context, conn *pgxpool.Pool, path string) error {

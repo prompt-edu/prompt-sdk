@@ -21,6 +21,8 @@ type TestDB[Q any] struct {
 	Queries Q
 }
 
+// SetupTestDB loads one SQL file that defines both schema and data.
+// Prefer SetupTestDBWithMigrations, which builds the schema from the service's migrations.
 func SetupTestDB[Q any](ctx context.Context, sqlDumpPath string, queryFactory func(*pgxpool.Pool) Q) (*TestDB[Q], func(), error) {
 	return setupTestDB(ctx, []string{sqlDumpPath}, queryFactory)
 }

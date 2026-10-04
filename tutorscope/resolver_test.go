@@ -69,17 +69,6 @@ func TestNewPgxResolverRejectsBadConfiguration(t *testing.T) {
 	})
 }
 
-// An empty login must not reach the database, where it would match a row stored as
-// the empty string. A zero-value pool would panic if the query ran.
-func TestResolveTutorTeamShortCircuitsEmptyLogin(t *testing.T) {
-	resolver := NewPgxResolver(&pgxpool.Pool{})
-	for _, login := range []string{"", "   "} {
-		if _, err := resolver.ResolveTutorTeam(context.Background(), uuid.New(), login); !errors.Is(err, pgx.ErrNoRows) {
-			t.Fatalf("login %q: expected pgx.ErrNoRows, got %v", login, err)
-		}
-	}
-}
-
 func TestResolveTutorTeamAgainstPostgres(t *testing.T) {
 	ctx := context.Background()
 	pool, cleanup := startPostgres(ctx, t)
@@ -105,6 +94,8 @@ func TestResolveTutorTeamAgainstPostgres(t *testing.T) {
 		  VALUES ($1, $2, 'ab12cde', 'Ada', 'Lovelace', $3)`, []any{phase, uuid.New(), teamAlpha}},
 		{`INSERT INTO tutor (course_phase_id, course_participation_id, university_login, first_name, last_name, team_id)
 		  VALUES ($1, $2, NULL, 'No', 'Login', $3)`, []any{phase, uuid.New(), teamAlpha}},
+		{`INSERT INTO tutor (course_phase_id, course_participation_id, university_login, first_name, last_name, team_id)
+		  VALUES ($1, $2, '', 'Empty', 'Login', $3)`, []any{phase, uuid.New(), teamAlpha}},
 		{`INSERT INTO tutor (course_phase_id, course_participation_id, university_login, first_name, last_name, team_id)
 		  VALUES ($1, $2, 'gh34ijk', 'Grace', 'Hopper', $3)`, []any{otherPhase, uuid.New(), teamBeta}},
 	}
@@ -132,13 +123,28 @@ func TestResolveTutorTeamAgainstPostgres(t *testing.T) {
 
 	// A tutor of another phase must not resolve here, or scoping would leak across phases.
 	t.Run("is scoped to the course phase", func(t *testing.T) {
-		if _, err := resolver.ResolveTutorTeam(ctx, phase, "gh34ijk"); !errors.Is(err, pgx.ErrNoRows) {
-			t.Fatalf("expected pgx.ErrNoRows, got %v", err)
+		if _, err := resolver.ResolveTutorTeam(ctx, phase, "gh34ijk"); !errors.Is(err, ErrNotATutor) {
+			t.Fatalf("expected ErrNotATutor, got %v", err)
 		}
 	})
 
 	t.Run("unknown login is not a tutor", func(t *testing.T) {
-		if _, err := resolver.ResolveTutorTeam(ctx, phase, "zz99zzz"); !errors.Is(err, pgx.ErrNoRows) {
+		if _, err := resolver.ResolveTutorTeam(ctx, phase, "zz99zzz"); !errors.Is(err, ErrNotATutor) {
+			t.Fatalf("expected ErrNotATutor, got %v", err)
+		}
+	})
+
+	// The phase stores a tutor under the empty string, which an empty login must not match.
+	t.Run("empty login is not a tutor", func(t *testing.T) {
+		for _, login := range []string{"", "   "} {
+			if _, err := resolver.ResolveTutorTeam(ctx, phase, login); !errors.Is(err, ErrNotATutor) {
+				t.Fatalf("login %q: expected ErrNotATutor, got %v", login, err)
+			}
+		}
+	})
+
+	t.Run("phase without tutors reports no rows", func(t *testing.T) {
+		if _, err := resolver.ResolveTutorTeam(ctx, uuid.New(), "ab12cde"); !errors.Is(err, pgx.ErrNoRows) {
 			t.Fatalf("expected pgx.ErrNoRows, got %v", err)
 		}
 	})

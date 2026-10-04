@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -53,6 +54,8 @@ type pgxResolver struct {
 //
 // Only course_phase_id, university_login and team_id are read. Store logins as
 // NormalizeLogin returns them: the lookup is an exact match so it can use the index.
+// Keep the unique index: a login stored twice for one phase fails the lookup with
+// an error rather than picking one of the teams.
 // Store NULL, never the empty string, for a tutor without a login. The partial
 // index does not exclude the empty string, so two login-less tutors of one phase
 // would collide, and the resolver never matches an empty login anyway.
@@ -70,25 +73,34 @@ func NewPgxResolver(pool *pgxpool.Pool, opts ...ResolverOption) Resolver {
 	}
 
 	resolver.query = fmt.Sprintf(
-		`SELECT team_id FROM %s WHERE course_phase_id = $1 AND university_login = $2`,
+		`SELECT (SELECT team_id FROM %[1]s WHERE course_phase_id = $1 AND university_login = $2),
+		        EXISTS (SELECT 1 FROM %[1]s WHERE course_phase_id = $1)`,
 		pgx.Identifier{resolver.table}.Sanitize(),
 	)
 	return resolver
 }
 
-// ResolveTutorTeam returns the team the tutor is assigned to in this course phase,
-// or pgx.ErrNoRows when the login belongs to no tutor of the phase. The middleware
-// reads that sentinel as "not a tutor", so it must not be wrapped.
+// ResolveTutorTeam returns the team the tutor is assigned to in this course phase.
+// When the login belongs to no tutor it returns ErrNotATutor if the phase has
+// tutors and pgx.ErrNoRows if it has none. The middleware tells the two apart, so
+// neither may be replaced by another error.
 func (r *pgxResolver) ResolveTutorTeam(ctx context.Context, coursePhaseID uuid.UUID, universityLogin string) (uuid.UUID, error) {
-	login := NormalizeLogin(universityLogin)
-	if login == "" {
-		// An empty login would otherwise match a row stored as the empty string.
-		return uuid.Nil, pgx.ErrNoRows
+	// NULL matches no row, so an empty login cannot match a row stored as the empty string.
+	var loginParam *string
+	if login := NormalizeLogin(universityLogin); login != "" {
+		loginParam = &login
 	}
 
-	var teamID uuid.UUID
-	if err := r.pool.QueryRow(ctx, r.query, coursePhaseID, login).Scan(&teamID); err != nil {
+	var teamID pgtype.UUID
+	var phaseHasTutors bool
+	if err := r.pool.QueryRow(ctx, r.query, coursePhaseID, loginParam).Scan(&teamID, &phaseHasTutors); err != nil {
 		return uuid.Nil, err
 	}
-	return teamID, nil
+	if teamID.Valid {
+		return teamID.Bytes, nil
+	}
+	if phaseHasTutors {
+		return uuid.Nil, ErrNotATutor
+	}
+	return uuid.Nil, pgx.ErrNoRows
 }

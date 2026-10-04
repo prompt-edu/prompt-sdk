@@ -127,9 +127,9 @@ func TestAuthorizeWrite(t *testing.T) {
 		}
 	})
 
-	// The read middleware lets these editors through with full access on purpose.
-	// Writes must not inherit that.
-	t.Run("editor with no tutor row is denied", func(t *testing.T) {
+	// In a phase without tutors the read middleware lets editors through with full
+	// access on purpose. Writes must not inherit that.
+	t.Run("editor in a phase without tutors is denied", func(t *testing.T) {
 		user := &keycloakTokenVerifier.TokenUser{IsEditor: true, UniversityLogin: "ab12cde"}
 		_, err := authorizeOn(t, user, stubResolver{err: pgx.ErrNoRows})
 		if !errors.Is(err, ErrWriteDenied) {
@@ -137,9 +137,9 @@ func TestAuthorizeWrite(t *testing.T) {
 		}
 	})
 
-	t.Run("editor with no university login is denied", func(t *testing.T) {
+	t.Run("editor with no university login in a phase without tutors is denied", func(t *testing.T) {
 		user := &keycloakTokenVerifier.TokenUser{IsEditor: true}
-		_, err := authorizeOn(t, user, stubResolver{teamID: team})
+		_, err := authorizeOn(t, user, stubResolver{err: pgx.ErrNoRows})
 		if !errors.Is(err, ErrWriteDenied) {
 			t.Fatalf("an editor without a login must be denied, got %v", err)
 		}

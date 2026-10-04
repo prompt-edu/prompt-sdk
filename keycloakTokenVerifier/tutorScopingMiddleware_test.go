@@ -3,6 +3,7 @@ package keycloakTokenVerifier
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -67,19 +68,28 @@ func TestTutorScopingMiddleware(t *testing.T) {
 		}
 	})
 
-	t.Run("empty login bypasses", func(t *testing.T) {
-		r := &fakeResolver{teamID: team}
-		_, _, scoped := runScoping(t, &TokenUser{IsEditor: true, UniversityLogin: "  "}, phase, r)
-		if scoped || r.called {
-			t.Fatalf("empty login must not call resolver")
-		}
-	})
-
-	t.Run("not a tutor (ErrNoRows) grants full access", func(t *testing.T) {
+	t.Run("phase without tutors (ErrNoRows) grants full access", func(t *testing.T) {
 		r := &fakeResolver{err: pgx.ErrNoRows}
 		code, _, scoped := runScoping(t, &TokenUser{IsEditor: true, UniversityLogin: "ab12cde"}, phase, r)
 		if code != http.StatusOK || scoped || !r.called {
 			t.Fatalf("ErrNoRows must bypass with full access, got code=%d scoped=%v", code, scoped)
+		}
+	})
+
+	t.Run("editor who is not a tutor of a phase with tutors is denied", func(t *testing.T) {
+		r := &fakeResolver{err: fmt.Errorf("lookup: %w", ErrNotATutor)}
+		code, _, scoped := runScoping(t, &TokenUser{IsEditor: true, UniversityLogin: "ab12cde"}, phase, r)
+		if code != http.StatusForbidden || scoped {
+			t.Fatalf("ErrNotATutor must abort with 403, got code=%d scoped=%v", code, scoped)
+		}
+	})
+
+	// A token without a login must not skip the check that denies non-tutors.
+	t.Run("empty login still reaches the resolver", func(t *testing.T) {
+		r := &fakeResolver{err: ErrNotATutor}
+		code, _, scoped := runScoping(t, &TokenUser{IsEditor: true, UniversityLogin: "  "}, phase, r)
+		if code != http.StatusForbidden || scoped || !r.called || r.gotLogin != "" {
+			t.Fatalf("expected the resolver to deny an empty login, got code=%d called=%v login=%q", code, r.called, r.gotLogin)
 		}
 	})
 

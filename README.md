@@ -42,15 +42,14 @@ A tutor is a course editor recorded as responsible for exactly one team of a cou
 them behave the same way. A module that consumes a team with tutor input does not have to know which
 phase produced it.
 
-Reads and writes are deliberately asymmetric:
-
-- `tutorscope.Middleware(resolver)` resolves the tutor's team onto the request and fails **open**.
-  An editor with no resolvable tutor record keeps full read access. Handlers narrow their responses
-  with `tutorscope.TeamID(c)`.
+- `tutorscope.Middleware(resolver)` resolves the tutor's team onto the request. Handlers narrow their
+  responses with `tutorscope.TeamID(c)`. Once the phase has tutors it fails **closed**: an editor who
+  is none of them, including one whose token carries no university login, is denied with 403. In a
+  phase without tutors editors keep full read access.
 - `tutorscope.AuthorizeWrite(c)` resolves the same request into a write scope and fails **closed**.
   Admins and course lecturers write any team; an editor with a resolved tutor team is confined to it;
-  everyone else is denied. Reusing the read gate for writes would hand every unresolvable editor
-  write access to every team of the phase.
+  everyone else is denied. In a phase without tutors editors therefore read every team but write
+  none: reusing the read gate for writes would hand them write access to every team of the phase.
 
 Apply a confined scope inside the mutating statement rather than reading the current team first, so
 authorization and mutation are atomic:
@@ -89,6 +88,11 @@ Supply the tutor lookup either by implementing `tutorscope.Resolver` over your o
 `tutorscope.NewPgxResolver(pool)` against a `tutor` table with the canonical shape documented on that
 constructor. Store logins as `tutorscope.NormalizeLogin` returns them, and store `NULL` rather than
 the empty string for a tutor without a login.
+
+A custom resolver answers a login that belongs to no tutor with `tutorscope.ErrNotATutor` when the
+phase has tutors, and with `pgx.ErrNoRows` when it has none. It receives an empty login for a token
+without one and must never match it to a row. A resolver that only returns `pgx.ErrNoRows` keeps the
+old fail-open reads.
 
 ## Resolution helpers
 

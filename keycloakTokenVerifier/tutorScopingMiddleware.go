@@ -20,18 +20,24 @@ const TutorTeamIDKey = "tutorTeamID"
 // only the first is a legitimate denial.
 const TutorScopingAppliedKey = "tutorScopingApplied"
 
+// ErrNotATutor is returned by a TutorTeamResolver when the course phase has tutors
+// and the login belongs to none of them.
+var ErrNotATutor = errors.New("not a tutor of a course phase that has tutors")
+
 // TutorTeamResolver is implemented by each service against its own database. It
 // is transport-agnostic (no gin types) so the lookup stays a one-method adapter
-// over the service's sqlc queries.
+// over the service's sqlc queries. The login is normalized and empty when the
+// token carries none; a resolver must never match an empty login to a row.
 type TutorTeamResolver interface {
 	ResolveTutorTeam(ctx context.Context, coursePhaseID uuid.UUID, universityLogin string) (uuid.UUID, error)
 }
 
 // TutorScopingMiddleware resolves the requesting tutor's assigned team and stores
 // it in the gin context for handlers to scope their responses. Only CourseEditor
-// users registered as a tutor are scoped; lecturers, admins and unregistered
-// editors pass through untouched. pgx.ErrNoRows from the resolver means "not a
-// tutor" (full editor access); any other resolver error fails closed with 500.
+// users are checked; lecturers and admins pass through untouched. A resolved team
+// scopes the editor to it, ErrNotATutor aborts with 403, and pgx.ErrNoRows means
+// the phase has no tutors, so the editor passes through unscoped. Any other
+// resolver error fails closed with 500.
 func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
 	if resolver == nil {
 		panic("TutorScopingMiddleware: resolver must not be nil")
@@ -47,21 +53,19 @@ func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
 			return
 		}
 
-		universityLogin := login.Normalize(tokenUser.UniversityLogin)
-		if universityLogin == "" {
-			c.Next()
-			return
-		}
-
 		coursePhaseID, err := uuid.Parse(c.Param("coursePhaseID"))
 		if err != nil || coursePhaseID == uuid.Nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid course phase id"})
 			return
 		}
 
-		teamID, err := resolver.ResolveTutorTeam(c.Request.Context(), coursePhaseID, universityLogin)
+		teamID, err := resolver.ResolveTutorTeam(c.Request.Context(), coursePhaseID, login.Normalize(tokenUser.UniversityLogin))
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.Next()
+			return
+		}
+		if errors.Is(err, ErrNotATutor) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access restricted to the tutors of this course phase"})
 			return
 		}
 		if err != nil {

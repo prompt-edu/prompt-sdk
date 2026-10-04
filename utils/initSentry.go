@@ -9,10 +9,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func InitSentry(sentryDsn string) error {
+// InitSentry initializes Sentry and hooks it into logrus. It does nothing when sentryDsn is empty.
+//
+// release is optional. Pass the same version the phase reports on its info endpoint (usually
+// SERVER_IMAGE_TAG) so Sentry groups events by release. Only the first value is used. When it is
+// omitted or empty, sentry-go falls back to its own detection (e.g. SENTRY_RELEASE or GITHUB_SHA).
+func InitSentry(sentryDsn string, release ...string) error {
 	if sentryDsn == "" {
 		log.Info("Sentry DSN not configured, skipping initialization")
 		return nil
+	}
+
+	var sentryRelease string
+	if len(release) > 0 {
+		sentryRelease = release[0]
 	}
 
 	transport := sentry.NewHTTPTransport()
@@ -25,6 +35,7 @@ func InitSentry(sentryDsn string) error {
 
 	if err := sentry.Init(sentry.ClientOptions{
 		Dsn:              sentryDsn,
+		Release:          sentryRelease,
 		Environment:      GetEnv("ENVIRONMENT", "development"),
 		Debug:            false,
 		Transport:        transport,
@@ -58,7 +69,7 @@ func InitSentry(sentryDsn string) error {
 		logHook.Flush(5 * time.Second)
 	})
 
-	log.Info("Sentry initialized successfully")
+	log.Infof("Sentry initialized successfully (release: %s)", client.Options().Release)
 	return nil
 }
 

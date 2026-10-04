@@ -13,13 +13,13 @@ import (
 // isStudentOfCoursePhaseMiddleware verifies with core that the caller is a
 // student of the course phase named by the coursePhaseID path parameter. On a
 // denial it fails closed by clearing the student flags on both the gin context
-// and the TokenUser; any unexpected error aborts the request with 500.
+// and the TokenUser. A core 401 aborts with 401 and any unexpected error with 500.
 func isStudentOfCoursePhaseMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		coursePhaseID, err := uuid.Parse(c.Param("coursePhaseID"))
 		if err != nil {
 			log.Error("Error parsing coursePhaseID: ", err)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -32,9 +32,13 @@ func isStudentOfCoursePhaseMiddleware() gin.HandlerFunc {
 		// TODO: Wrap this around a caching component
 		// request from the core if the user is a student of the course phase
 		isStudentResponse, err := keycloakCoreRequests.SendIsStudentRequest(KeycloakTokenVerifierSingleton.CoreURL, c.GetHeader("Authorization"), coursePhaseID)
+		if errors.Is(err, keycloakCoreRequests.ErrUnauthenticated) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "could not authenticate"})
+			return
+		}
 		if err != nil {
 			if errors.Is(err, keycloakCoreRequests.ErrNotStudentOfCourse) {
-				// Core denied access (403/401): the caller is not a student of this
+				// Core denied access (403): the caller is not a student of this
 				// course phase. Fail closed on both the context keys and the token user.
 				c.Set("isStudentOfCourse", false)
 				c.Set("isStudentOfCoursePhase", false)

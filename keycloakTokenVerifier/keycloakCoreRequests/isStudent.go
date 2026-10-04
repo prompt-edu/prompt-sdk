@@ -13,14 +13,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ErrNotStudentOfCourse is returned when core denies course-phase access (401/403).
+// ErrNotStudentOfCourse is returned when core denies course-phase access (403).
 // Callers must compare with errors.Is rather than matching the message string.
 var ErrNotStudentOfCourse = errors.New("not student of course")
 
 // SendIsStudentRequest asks core whether the bearer of authHeader is a student
-// of the given course phase. It returns ErrNotStudentOfCourse when core denies
-// access (401/403), a descriptive error for any other non-200 status, and the
-// decoded participation on 200.
+// of the given course phase. It returns ErrUnauthenticated when core rejects the
+// token (401), ErrNotStudentOfCourse when core denies access (403), a descriptive
+// error for any other non-200 status, and the decoded participation on 200.
 func SendIsStudentRequest(coreURL url.URL, authHeader string, coursePhaseID uuid.UUID) (keycloakTokenVerifierDTO.GetCoursePhaseParticipation, error) {
 	path := path.Join("/api/auth/course_phase", coursePhaseID.String(), "is_student")
 
@@ -34,9 +34,13 @@ func SendIsStudentRequest(coreURL url.URL, authHeader string, coursePhaseID uuid
 		}
 	}()
 
-	// Core denies cross-course/cross-phase access with 403 (and 401 if unauthenticated).
-	// Both mean "not a student of this course phase" and must fail closed.
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.Info("Unauthenticated core response for student check")
+		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{}, ErrUnauthenticated
+	}
+
+	// Core denies cross-course/cross-phase access with 403, which must fail closed.
+	if resp.StatusCode == http.StatusForbidden {
 		log.Info("Not student of course")
 		return keycloakTokenVerifierDTO.GetCoursePhaseParticipation{IsStudentOfCoursePhase: false}, ErrNotStudentOfCourse
 	}

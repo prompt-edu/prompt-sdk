@@ -17,7 +17,7 @@ const (
 
 	// CapabilityPhaseDeletion indicates support for deleting all data a module
 	// stores for a course phase when that phase is permanently deleted.
-	// Expected endpoint: POST .../course_phase/:coursePhaseID/delete
+	// Expected endpoint: DELETE .../course_phase/:coursePhaseID
 	CapabilityPhaseDeletion = "phase.deletion"
 
 	// CapabilityPhaseConfig indicates support for reporting the configuration
@@ -52,7 +52,8 @@ type ServiceInfo struct {
 	ServiceName string `json:"serviceName"`
 
 	// Version is the deployed version or image tag of the service. Optional.
-	// Set this from the SERVER_IMAGE_TAG environment variable.
+	// Set this from the SERVER_IMAGE_TAG environment variable, and pass the same value to
+	// utils.InitSentry so Sentry releases match the version reported here.
 	Version string `json:"version,omitempty"`
 
 	// Healthy reports whether the service is fully operational at the time of the request.

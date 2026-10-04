@@ -94,8 +94,9 @@ func flushRecordedEvents(c *gin.Context, rt *runtime) {
 }
 
 // outcomeForStatus classifies a status for the automatic backstop, which only
-// records clear successes (2xx) and denials. Denials abort with 403 in core's
-// permission middleware and 401 in the SDK auth middleware; both count, and the
+// records clear successes (2xx) and denials. Core's permission middleware and
+// the SDK auth middleware deny with 403. Handlers still deny some requests with
+// 401 (e.g. GetUserCourseParticipationIDErrorStatus), so 401 counts too, and the
 // actor gate filters out unauthenticated 401s (no resolvable actor).
 func outcomeForStatus(status int) (string, bool) {
 	switch {

@@ -152,8 +152,8 @@ func TestMiddleware_SkipsReadsAndNoise(t *testing.T) {
 }
 
 func TestMiddleware_Logs401DenialWithActor(t *testing.T) {
-	// The SDK auth middleware aborts authorization denials with 401 (not 403);
-	// a 401 that still has a resolvable actor is a genuine denied attempt.
+	// Handlers still deny some requests with 401 (e.g. a missing course
+	// participation); a 401 that still has a resolvable actor is a genuine denied attempt.
 	sink, wg := newWaitSink(1)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

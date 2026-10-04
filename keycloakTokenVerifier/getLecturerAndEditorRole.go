@@ -10,6 +10,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// CourseRolesResolvedKey is the gin context key marking that the course-level
+// Lecturer and Editor roles were looked up for this request. AuthenticationMiddleware
+// admits a caller holding the global PROMPT_Lecturer role before that lookup runs, so
+// without the marker IsLecturer and IsEditor being false is indistinguishable from the
+// caller actually holding neither.
+const CourseRolesResolvedKey = "courseRolesResolved"
+
+// CourseRolesResolved reports whether TokenUser.IsLecturer and IsEditor reflect an
+// actual lookup for this course phase rather than their zero values.
+func CourseRolesResolved(c *gin.Context) bool {
+	resolved, exists := c.Get(CourseRolesResolvedKey)
+	if !exists {
+		return false
+	}
+	ran, ok := resolved.(bool)
+	return ok && ran
+}
+
 // Important: This requires a CoursePhaseID as a parameter.
 func getLecturerAndEditorRole() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -61,5 +79,6 @@ func getLecturerAndEditorRole() gin.HandlerFunc {
 		tokenUser.IsEditor = isEditor
 		tokenUser.CustomRolePrefix = tokenMapping.CustomRolePrefix
 		SetTokenUser(c, tokenUser)
+		c.Set(CourseRolesResolvedKey, true)
 	}
 }

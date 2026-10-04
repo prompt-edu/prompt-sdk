@@ -1,6 +1,15 @@
 package keycloakTokenVerifier
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestOnlyContainsAdminAndLecturer(t *testing.T) {
 	tests := []struct {
@@ -101,6 +110,92 @@ func TestRequiresLecturerOrCustom(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("requiresLecturerOrCustom(%v, %v) = %v; want %v", tt.allowedSet, tt.roles, got, tt.want)
 			}
+		})
+	}
+}
+
+// TestMatchesCustomRole guards the roles matched against the course role prefix.
+// A built-in role must never be prefix-matched: a course group named after one
+// would otherwise satisfy a route declaring that role, skipping the per-phase
+// check core performs for it.
+func TestMatchesCustomRole(t *testing.T) {
+	const prefix = "ios24-Course-cg-"
+	tests := []struct {
+		name         string
+		prefix       string
+		allowedRoles []string
+		userRoles    map[string]bool
+		want         bool
+	}{
+		{"custom role held", prefix, []string{"Tutor"}, map[string]bool{prefix + "Tutor": true}, true},
+		{"custom role not held", prefix, []string{"Tutor"}, map[string]bool{prefix + "Reviewer": true}, false},
+		{"built-in role not prefix matched", prefix, []string{CourseStudent}, map[string]bool{prefix + CourseStudent: true}, false},
+		{"built-in role alongside custom", prefix, []string{CourseStudent, "Tutor"}, map[string]bool{prefix + CourseStudent: true}, false},
+		{"custom role wins over built-in", prefix, []string{CourseStudent, "Tutor"}, map[string]bool{prefix + "Tutor": true}, true},
+		{"empty prefix never matches", "", []string{"Tutor"}, map[string]bool{"Tutor": true}, false},
+		{"no allowed roles", prefix, nil, map[string]bool{prefix + "Tutor": true}, false},
+		{"un-prefixed role ignored", prefix, []string{"Tutor"}, map[string]bool{"Tutor": true}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := matchesCustomRole(tt.prefix, tt.allowedRoles, tt.userRoles)
+			if got != tt.want {
+				t.Errorf("matchesCustomRole(%q, %v, %v) = %v; want %v", tt.prefix, tt.allowedRoles, tt.userRoles, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAuthorizationMiddleware_StatusCodes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const roleMapping = `{"courseLecturerRole":"WS24-Lecturer","courseEditorRole":"WS24-Editor","customRolePrefix":"WS24-cg-"}`
+
+	tests := []struct {
+		name         string
+		allowedRoles []string
+		userRoles    []string
+		coreStatus   int // 500 where core must not be consulted
+		coreBody     string
+		want         int
+	}{
+		{"admin-only route grants admin", []string{PromptAdmin}, []string{PromptAdmin}, http.StatusInternalServerError, "", http.StatusOK},
+		{"admin-only route forbids other users", []string{PromptAdmin}, nil, http.StatusInternalServerError, "", http.StatusForbidden},
+		{"lecturer route grants course lecturer", []string{CourseLecturer}, []string{"WS24-Lecturer"}, http.StatusOK, roleMapping, http.StatusOK},
+		{"lecturer route forbids non-lecturer", []string{CourseLecturer}, nil, http.StatusOK, roleMapping, http.StatusForbidden},
+		{"lecturer route keeps 401 when core rejects the token", []string{CourseLecturer}, nil, http.StatusUnauthorized, "", http.StatusUnauthorized},
+		{"student route grants same-course student", []string{CourseStudent}, nil, http.StatusOK, `{"isStudentOfCoursePhase":true}`, http.StatusOK},
+		{"student route forbids cross-course student", []string{CourseStudent}, nil, http.StatusForbidden, `{"error":"Access denied"}`, http.StatusForbidden},
+		{"student route keeps 401 when core rejects the token", []string{CourseStudent}, nil, http.StatusUnauthorized, "", http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			core := newCoreStub(tt.coreStatus, tt.coreBody)
+			defer core.Close()
+			coreURL, err := url.Parse(core.URL)
+			require.NoError(t, err)
+			prev := KeycloakTokenVerifierSingleton
+			KeycloakTokenVerifierSingleton = &KeycloakTokenVerifier{CoreURL: *coreURL}
+			t.Cleanup(func() { KeycloakTokenVerifierSingleton = prev })
+
+			roles := map[string]bool{}
+			for _, role := range tt.userRoles {
+				roles[role] = true
+			}
+			r := gin.New()
+			r.GET("/api/course_phase/:coursePhaseID/resource",
+				func(c *gin.Context) { SetTokenUser(c, TokenUser{Roles: roles}) },
+				authorizationMiddleware(tt.allowedRoles...),
+				func(c *gin.Context) { c.Status(http.StatusOK) },
+			)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/course_phase/11111111-1111-1111-1111-111111111111/resource", nil)
+			req.Header.Set("Authorization", "Bearer token")
+			resp := httptest.NewRecorder()
+			r.ServeHTTP(resp, req)
+
+			assert.Equal(t, tt.want, resp.Code)
 		})
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/getsentry/sentry-go"
+	log "github.com/sirupsen/logrus"
 )
 
 func captureSentryRequest(t *testing.T, sendDefaultPII bool) *sentry.Request {
@@ -73,5 +74,45 @@ func TestSentryDataCollectionSendsPIIWhenEnabled(t *testing.T) {
 	}
 	if got.QueryString != "q=safe&token=[Filtered]" {
 		t.Errorf("query = %q, want token filtered even with PII enabled", got.QueryString)
+	}
+}
+
+// isolateSentry swaps in empty logrus hooks and restores them and the previous Sentry client once
+// the test ends, so InitSentry's global side effects do not leak into other tests.
+func isolateSentry(t *testing.T) {
+	t.Helper()
+
+	previousClient := sentry.CurrentHub().Client()
+	previousHooks := log.StandardLogger().ReplaceHooks(make(log.LevelHooks))
+	t.Cleanup(func() {
+		log.StandardLogger().ReplaceHooks(previousHooks)
+		sentry.CurrentHub().BindClient(previousClient)
+	})
+}
+
+func TestInitSentryRelease(t *testing.T) {
+	tests := []struct {
+		name    string
+		release []string
+		want    string
+	}{
+		{name: "passed release wins over the environment", release: []string{"pr-1234"}, want: "pr-1234"},
+		{name: "empty release falls back to sentry-go detection", release: []string{""}, want: "from-env"},
+		{name: "omitted release falls back to sentry-go detection", release: nil, want: "from-env"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isolateSentry(t)
+			t.Setenv("SENTRY_RELEASE", "from-env")
+
+			if err := InitSentry("https://key@o0.ingest.example.test/1", tt.release...); err != nil {
+				t.Fatalf("init sentry: %v", err)
+			}
+
+			if got := sentry.CurrentHub().Client().Options().Release; got != tt.want {
+				t.Errorf("release = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

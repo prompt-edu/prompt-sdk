@@ -99,6 +99,7 @@ old fail-open reads.
 - Describe where to fetch supplemental data (base URL, endpoint path, course phase ID, expected DTO name)
 - Resolve for a single participation, for all participations, or for the entire course phase
 - Merge resolved data into metadata maps for consistent downstream usage
+- Read a course phase from core with `FetchCoursePhase` (its course, name and phase type) instead of calling core's route directly
 
 ## Standard endpoints
 

@@ -3,7 +3,12 @@ package testutils
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,7 +21,22 @@ type TestDB[Q any] struct {
 	Queries Q
 }
 
+// SetupTestDB loads one SQL file that defines both schema and data.
+// Prefer SetupTestDBWithMigrations, which builds the schema from the service's migrations.
 func SetupTestDB[Q any](ctx context.Context, sqlDumpPath string, queryFactory func(*pgxpool.Pool) Q) (*TestDB[Q], func(), error) {
+	return setupTestDB(ctx, []string{sqlDumpPath}, queryFactory)
+}
+
+// SetupTestDBWithMigrations applies every *.up.sql file in migrationsDir in golang-migrate's version order, then the seed files.
+func SetupTestDBWithMigrations[Q any](ctx context.Context, migrationsDir string, queryFactory func(*pgxpool.Pool) Q, seedPaths ...string) (*TestDB[Q], func(), error) {
+	migrationPaths, err := upMigrationPaths(migrationsDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return setupTestDB(ctx, append(migrationPaths, seedPaths...), queryFactory)
+}
+
+func setupTestDB[Q any](ctx context.Context, sqlPaths []string, queryFactory func(*pgxpool.Pool) Q) (*TestDB[Q], func(), error) {
 	// Set up PostgreSQL container
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:15",
@@ -53,28 +73,18 @@ func SetupTestDB[Q any](ctx context.Context, sqlDumpPath string, queryFactory fu
 	}
 	dbURL := fmt.Sprintf("postgres://testuser:testpass@%s:%s/prompt?sslmode=disable", host, port.Port())
 
-	/// Try a short retry loop just in case the network is slower on CI
-	var conn *pgxpool.Pool
-	for i := 0; i < 5; i++ {
-		conn, err = pgxpool.New(ctx, dbURL)
-		if err == nil {
-			if pingErr := conn.Ping(ctx); pingErr == nil {
-				break
-			}
-			conn.Close()
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
+	conn, err := connect(ctx, dbURL)
 	if err != nil {
 		_ = container.Terminate(ctx)
-		return nil, nil, fmt.Errorf("failed to connect to the database after retries: %w", err)
+		return nil, nil, err
 	}
 
-	// Run the SQL dump
-	if err := runSQLDump(ctx, conn, sqlDumpPath); err != nil {
-		conn.Close()
-		_ = container.Terminate(ctx)
-		return nil, nil, fmt.Errorf("failed to run SQL dump: %w", err)
+	for _, path := range sqlPaths {
+		if err := runSQLFile(ctx, conn, path); err != nil {
+			conn.Close()
+			_ = container.Terminate(ctx)
+			return nil, nil, err
+		}
 	}
 
 	// Create queries using the provided factory function
@@ -92,14 +102,66 @@ func SetupTestDB[Q any](ctx context.Context, sqlDumpPath string, queryFactory fu
 	}, cleanup, nil
 }
 
-func runSQLDump(ctx context.Context, conn *pgxpool.Pool, path string) error {
-	dump, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("could not read SQL dump file: %w", err)
+func connect(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
+	var lastErr error
+	for range 5 {
+		conn, err := pgxpool.New(ctx, dbURL)
+		if err == nil {
+			if err = conn.Ping(ctx); err == nil {
+				return conn, nil
+			}
+			conn.Close()
+		}
+		lastErr = err
+		time.Sleep(500 * time.Millisecond)
 	}
-	_, err = conn.Exec(ctx, string(dump))
+	return nil, fmt.Errorf("failed to connect to the database after retries: %w", lastErr)
+}
+
+func upMigrationPaths(migrationsDir string) ([]string, error) {
+	paths, err := filepath.Glob(filepath.Join(migrationsDir, "*.up.sql"))
 	if err != nil {
-		return fmt.Errorf("failed to execute SQL dump: %w", err)
+		return nil, fmt.Errorf("could not list migrations: %w", err)
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no up migrations found in %s", migrationsDir)
+	}
+
+	pathByVersion := make(map[uint64]string, len(paths))
+	for _, path := range paths {
+		version, err := migrationVersion(path)
+		if err != nil {
+			return nil, err
+		}
+		if other, ok := pathByVersion[version]; ok {
+			return nil, fmt.Errorf("migrations %s and %s share version %d", other, path, version)
+		}
+		pathByVersion[version] = path
+	}
+
+	ordered := make([]string, 0, len(paths))
+	for _, version := range slices.Sorted(maps.Keys(pathByVersion)) {
+		ordered = append(ordered, pathByVersion[version])
+	}
+	return ordered, nil
+}
+
+func migrationVersion(path string) (uint64, error) {
+	prefix, _, _ := strings.Cut(filepath.Base(path), "_")
+	version, err := strconv.ParseUint(prefix, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("migration %s has no numeric version prefix", path)
+	}
+	return version, nil
+}
+
+func runSQLFile(ctx context.Context, conn *pgxpool.Pool, path string) error {
+	statements, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("could not read SQL file: %w", err)
+	}
+	if _, err := conn.Exec(ctx, string(statements)); err != nil {
+		return fmt.Errorf("failed to execute %s: %w", path, err)
 	}
 	return nil
 }

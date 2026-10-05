@@ -120,6 +120,16 @@ old fail-open reads.
 
 Run your standard Go tests within the module (for example with your usual tooling).
 
+`testutils.SetupTestDBWithMigrations` starts a Postgres testcontainer, applies a service's `*.up.sql` migrations in version order, then loads optional seed files, so tests run against the production schema. Seed files hold only data:
+
+```go
+testDB, cleanup, err := testutils.SetupTestDBWithMigrations(ctx, "../db/migration",
+	func(conn *pgxpool.Pool) *db.Queries { return db.New(conn) },
+	"../database_dumps/course_test.sql")
+```
+
+Paths are relative to the test's package directory. `testutils.SetupTestDB` still loads a single SQL file with schema and data.
+
 ## License
 
 MIT © TUM Applied Education Technologies — see the LICENSE file.

@@ -25,6 +25,7 @@ func TestMatchesAnyKey(t *testing.T) {
 	assert.True(t, matchesAnyKey("old", accepted))
 	assert.True(t, matchesAnyKey("new", accepted))
 	assert.False(t, matchesAnyKey("wrong", accepted))
+	assert.False(t, matchesAnyKey("ol", accepted))
 	assert.False(t, matchesAnyKey("", nil))
 	assert.False(t, matchesAnyKey("", []string{}))
 }
@@ -33,7 +34,7 @@ func TestMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.GET("/", Middleware(ParseKeys("interview:sekret"), "X-Service", "X-Token"), func(c *gin.Context) {
-		c.String(http.StatusOK, ServiceName(c))
+		c.String(http.StatusOK, ServiceName(c)+c.GetHeader("X-Token"))
 	})
 
 	for _, tt := range []struct {
@@ -54,7 +55,7 @@ func TestMiddleware(t *testing.T) {
 
 			require.Equal(t, tt.status, recorder.Code)
 			if tt.status == http.StatusOK {
-				require.Equal(t, "interview", recorder.Body.String())
+				require.Equal(t, "interview", recorder.Body.String(), "the token header is removed after a match")
 			}
 		})
 	}

@@ -34,6 +34,7 @@ Install via your Go module tooling (module path: github.com/prompt-edu/prompt-sd
 - Custom roles supported via a prefix provided by Core; any additional role names can be checked against that prefix
 - The middleware verifies standard OIDC fields and attaches a token user to the request context
 - Missing or invalid credentials are rejected with 401; an authenticated user without an allowed role is rejected with 403
+- Service-to-service routes use `serviceAuth`: `ParseKeys` reads per-service shared secrets (`service1:key1,service2:key2`, a service may repeat for key rotation), `Middleware` checks a service-name and a token header in constant time, and `ServiceName` returns the authenticated service
 
 ## Tutor team scoping
 
@@ -99,6 +100,7 @@ old fail-open reads.
 - Describe where to fetch supplemental data (base URL, endpoint path, course phase ID, expected DTO name)
 - Resolve for a single participation, for all participations, or for the entire course phase
 - Merge resolved data into metadata maps for consistent downstream usage
+- Read a course phase from core with `FetchCoursePhase` (its course, name and phase type) instead of calling core's route directly
 
 ## Standard endpoints
 

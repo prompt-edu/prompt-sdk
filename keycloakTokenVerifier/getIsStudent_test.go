@@ -17,7 +17,8 @@ import (
 // live OIDC verifier). A pre-middleware seeds the TokenUser the way Keycloak
 // would, and the terminal handler echoes the gate-relevant flags so the test
 // can assert them. authMiddleware.go step 3 grants student access on
-// TokenUser.IsStudentOfCourse, so that flag is what guards the CVE.
+// TokenUser.IsStudentOfCoursePhase; IsStudentOfCourse must still fail closed on a
+// cross-course denial so neither flag grants access to a non-student.
 func newStudentPathRouter(t *testing.T, coreURL string) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)

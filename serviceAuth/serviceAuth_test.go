@@ -60,3 +60,18 @@ func TestMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestMiddlewareRejectsEmptyTokenForHandBuiltEmptyKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/", Middleware(Keys{"interview": {""}}, "X-Service", "X-Token"), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("X-Service", "interview")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}

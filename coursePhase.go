@@ -14,7 +14,8 @@ import (
 )
 
 // FetchCoursePhase reads a course phase from core with the caller's token, so core decides whether
-// the caller may see it. Any answer other than 200 is an error.
+// the caller may see it. Any answer other than 200 is an error. Without lecturer or editor access,
+// core returns RestrictedData as {}, so don't read phase config from it with a student token.
 func FetchCoursePhase(ctx context.Context, coreURL, authHeader string, coursePhaseID uuid.UUID) (promptTypes.CoursePhase, error) {
 	phaseURL, err := url.JoinPath(coreURL, "api/course_phases", coursePhaseID.String())
 	if err != nil {

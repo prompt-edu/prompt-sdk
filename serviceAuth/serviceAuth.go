@@ -37,8 +37,8 @@ func ParseKeys(raw string) Keys {
 // removed on success, so nothing that logs the request later can leak it.
 func Middleware(keys Keys, serviceHeader, tokenHeader string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		service := c.GetHeader(serviceHeader)
-		if service == "" || !matchesAnyKey(c.GetHeader(tokenHeader), keys[service]) {
+		service, token := c.GetHeader(serviceHeader), c.GetHeader(tokenHeader)
+		if service == "" || token == "" || !matchesAnyKey(token, keys[service]) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, utils.ErrorResponse{Error: "invalid service credentials"})
 			return
 		}

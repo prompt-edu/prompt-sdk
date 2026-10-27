@@ -164,7 +164,11 @@ func TestAuthorizationMiddleware_StatusCodes(t *testing.T) {
 		{"lecturer route grants course lecturer", []string{CourseLecturer}, []string{"WS24-Lecturer"}, http.StatusOK, roleMapping, http.StatusOK},
 		{"lecturer route forbids non-lecturer", []string{CourseLecturer}, nil, http.StatusOK, roleMapping, http.StatusForbidden},
 		{"lecturer route keeps 401 when core rejects the token", []string{CourseLecturer}, nil, http.StatusUnauthorized, "", http.StatusUnauthorized},
-		{"student route grants same-course student", []string{CourseStudent}, nil, http.StatusOK, `{"isStudentOfCoursePhase":true}`, http.StatusOK},
+		{"student route grants in-phase student", []string{CourseStudent}, nil, http.StatusOK, `{"isStudentOfCoursePhase":true}`, http.StatusOK},
+		// Core returns 200 for any student of the course, but a student who is not in
+		// this phase (e.g. an applicant or a student of another phase) must be denied.
+		// Regression test for GHSA-cp72-6q5h-63xc.
+		{"student route forbids course student not in phase", []string{CourseStudent}, nil, http.StatusOK, `{"isStudentOfCoursePhase":false}`, http.StatusForbidden},
 		{"student route forbids cross-course student", []string{CourseStudent}, nil, http.StatusForbidden, `{"error":"Access denied"}`, http.StatusForbidden},
 		{"student route keeps 401 when core rejects the token", []string{CourseStudent}, nil, http.StatusUnauthorized, "", http.StatusUnauthorized},
 	}

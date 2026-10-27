@@ -14,7 +14,8 @@ import (
 //   - If allowedRoles contains "Lecturer", "Editor" or a custom role name
 //     (any value other than "Admin" or "Student"), then it calls GetLecturerAndEditorRole.
 //     For custom roles the middleware checks if the user's roles include customRolePrefix+customRole.
-//   - If allowedRoles contains "Student", then it calls IsStudentOfCoursePhaseMiddleware.
+//   - If allowedRoles contains "Student", then it calls IsStudentOfCoursePhaseMiddleware
+//     and grants access only to a student of this course phase (not merely the course).
 //
 // Missing or invalid credentials abort with 401. An authenticated caller
 // without any of the allowed roles aborts with 403.
@@ -100,7 +101,13 @@ func authorizationMiddleware(allowedRoles ...string) gin.HandlerFunc {
 				return
 			}
 
-			if tokenUser.IsStudentOfCourse {
+			// Authorize on phase membership, not course membership. Core returns 200
+			// (IsStudentOfCourse) for any student of the course, including applicants
+			// and students of other phases; IsStudentOfCoursePhase is true only for
+			// this phase (which Core already extends to students who passed into it via
+			// the phase graph). Gating on IsStudentOfCourse would let a student of one
+			// phase reach every other phase of the course. See GHSA-cp72-6q5h-63xc.
+			if tokenUser.IsStudentOfCoursePhase {
 				c.Next()
 				return
 			}

@@ -53,9 +53,13 @@ type Access struct {
 // AuthorizeWrite resolves the caller's write scope, failing closed:
 //
 //   - PROMPT_Admin and course lecturers write any team of the phase.
-//   - A course editor with a resolved tutor team is confined to that team.
+//   - A course editor with exactly one resolved tutor team is confined to that team.
 //   - Everyone else is denied, including an editor whose tutor record could not be
 //     resolved. Reads let that editor through; writes must not.
+//   - A tutor of several teams is denied as well. Access and Guard describe a single
+//     team, and a guard that silently picked one of them would let the tutor write a
+//     team chosen by resolution order. Such tutors keep their read scope over every
+//     team through TeamIDs.
 //
 // The global PROMPT_Lecturer role is deliberately not privileged here. It marks
 // someone who may create courses, not a lecturer of this course, so honoring the
@@ -84,11 +88,11 @@ func AuthorizeWrite(c *gin.Context) (Access, error) {
 			return Access{}, ErrScopingNotApplied
 		}
 
-		teamID, scoped := keycloakTokenVerifier.GetTutorTeamID(c)
-		if !scoped {
+		teamIDs, scoped := keycloakTokenVerifier.GetTutorTeamIDs(c)
+		if !scoped || len(teamIDs) != 1 {
 			return Access{}, ErrWriteDenied
 		}
-		return Access{TeamID: teamID, Confined: true, granted: true}, nil
+		return Access{TeamID: teamIDs[0], Confined: true, granted: true}, nil
 	}
 
 	if tokenUser.Roles[keycloakTokenVerifier.PromptLecturer] && !keycloakTokenVerifier.CourseRolesResolved(c) {

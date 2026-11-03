@@ -104,3 +104,74 @@ func (r *pgxResolver) ResolveTutorTeam(ctx context.Context, coursePhaseID uuid.U
 	}
 	return uuid.Nil, pgx.ErrNoRows
 }
+
+type pgxTeamsResolver struct {
+	pool  *pgxpool.Pool
+	table string
+	query string
+}
+
+// NewPgxTeamsResolver resolves every team of a tutor straight from a table, for
+// services whose tutors can be assigned to several teams of a course phase. Pass it
+// to TeamsMiddleware.
+//
+// It reads the same three columns as NewPgxResolver (course_phase_id,
+// university_login, team_id), so it works on the canonical one-row-per-tutor table
+// as well as on a table or view with one row per tutor and team. For the latter the
+// canonical uniqueness is per team:
+//
+//	CREATE UNIQUE INDEX tutor_phase_login_team_uk
+//	    ON tutor (course_phase_id, university_login, team_id)
+//	    WHERE university_login IS NOT NULL;
+//
+// Teams are returned in a stable order. The storage rules of NewPgxResolver apply:
+// store logins as NormalizeLogin returns them and NULL, never the empty string, for
+// a tutor without a login.
+func NewPgxTeamsResolver(pool *pgxpool.Pool, opts ...ResolverOption) TeamsResolver {
+	if pool == nil {
+		panic("tutorscope.NewPgxTeamsResolver: pool must not be nil")
+	}
+
+	// Reuse the option type: options only set the table.
+	config := &pgxResolver{table: DefaultTable}
+	for _, opt := range opts {
+		opt(config)
+	}
+	if config.table == "" {
+		panic("tutorscope.NewPgxTeamsResolver: table must not be empty")
+	}
+
+	resolver := &pgxTeamsResolver{pool: pool, table: config.table}
+	resolver.query = fmt.Sprintf(
+		`SELECT ARRAY(SELECT DISTINCT team_id FROM %[1]s
+		              WHERE course_phase_id = $1 AND university_login = $2
+		              ORDER BY team_id),
+		        EXISTS (SELECT 1 FROM %[1]s WHERE course_phase_id = $1)`,
+		pgx.Identifier{resolver.table}.Sanitize(),
+	)
+	return resolver
+}
+
+// ResolveTutorTeams returns every team the tutor is assigned to in this course
+// phase. When the login belongs to no tutor it returns ErrNotATutor if the phase has
+// tutors and pgx.ErrNoRows if it has none, like ResolveTutorTeam.
+func (r *pgxTeamsResolver) ResolveTutorTeams(ctx context.Context, coursePhaseID uuid.UUID, universityLogin string) ([]uuid.UUID, error) {
+	// NULL matches no row, so an empty login cannot match a row stored as the empty string.
+	var loginParam *string
+	if login := NormalizeLogin(universityLogin); login != "" {
+		loginParam = &login
+	}
+
+	var teamIDs []uuid.UUID
+	var phaseHasTutors bool
+	if err := r.pool.QueryRow(ctx, r.query, coursePhaseID, loginParam).Scan(&teamIDs, &phaseHasTutors); err != nil {
+		return nil, err
+	}
+	if len(teamIDs) > 0 {
+		return teamIDs, nil
+	}
+	if phaseHasTutors {
+		return nil, ErrNotATutor
+	}
+	return nil, pgx.ErrNoRows
+}

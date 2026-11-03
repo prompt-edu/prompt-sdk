@@ -137,3 +137,164 @@ func TestTutorScopingMiddleware_NilResolverPanics(t *testing.T) {
 	}()
 	TutorScopingMiddleware(nil)
 }
+
+type fakeTeamsResolver struct {
+	teamIDs  []uuid.UUID
+	err      error
+	called   bool
+	gotLogin string
+}
+
+func (f *fakeTeamsResolver) ResolveTutorTeams(_ context.Context, _ uuid.UUID, login string) ([]uuid.UUID, error) {
+	f.called = true
+	f.gotLogin = login
+	return f.teamIDs, f.err
+}
+
+type teamsScopingResult struct {
+	code     int
+	teamIDs  []uuid.UUID
+	scoped   bool
+	firstID  uuid.UUID
+	firstSet bool
+}
+
+func runTeamsScoping(t *testing.T, user *TokenUser, resolver TutorTeamsResolver) teamsScopingResult {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	var result teamsScopingResult
+	router := gin.New()
+	router.GET("/course_phase/:coursePhaseID", func(c *gin.Context) {
+		if user != nil {
+			SetTokenUser(c, *user)
+		}
+	}, TutorTeamsScopingMiddleware(resolver), func(c *gin.Context) {
+		result.teamIDs, result.scoped = GetTutorTeamIDs(c)
+		result.firstID, result.firstSet = GetTutorTeamID(c)
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/course_phase/"+uuid.New().String(), nil)
+	router.ServeHTTP(w, req)
+	result.code = w.Code
+	return result
+}
+
+func TestTutorTeamsScopingMiddleware(t *testing.T) {
+	teamA := uuid.New()
+	teamB := uuid.New()
+	editor := &TokenUser{IsEditor: true, UniversityLogin: "  AB12CDE "}
+
+	t.Run("tutor of one team is scoped to it", func(t *testing.T) {
+		r := &fakeTeamsResolver{teamIDs: []uuid.UUID{teamA}}
+		got := runTeamsScoping(t, editor, r)
+		if got.code != http.StatusOK || !got.scoped || len(got.teamIDs) != 1 || got.teamIDs[0] != teamA {
+			t.Fatalf("expected scope [%v], got %+v", teamA, got)
+		}
+		if r.gotLogin != "ab12cde" {
+			t.Fatalf("expected normalized login ab12cde, got %q", r.gotLogin)
+		}
+	})
+
+	t.Run("tutor of several teams is scoped to all of them", func(t *testing.T) {
+		got := runTeamsScoping(t, editor, &fakeTeamsResolver{teamIDs: []uuid.UUID{teamA, teamB}})
+		if got.code != http.StatusOK || !got.scoped || len(got.teamIDs) != 2 || got.teamIDs[0] != teamA || got.teamIDs[1] != teamB {
+			t.Fatalf("expected scope [%v %v], got %+v", teamA, teamB, got)
+		}
+	})
+
+	// A caller that only knows one team must see less, never more.
+	t.Run("deprecated single-team getter returns the first team", func(t *testing.T) {
+		got := runTeamsScoping(t, editor, &fakeTeamsResolver{teamIDs: []uuid.UUID{teamA, teamB}})
+		if !got.firstSet || got.firstID != teamA {
+			t.Fatalf("expected first team %v, got %v (set=%v)", teamA, got.firstID, got.firstSet)
+		}
+	})
+
+	t.Run("empty team list fails closed", func(t *testing.T) {
+		got := runTeamsScoping(t, editor, &fakeTeamsResolver{teamIDs: []uuid.UUID{}})
+		if got.code != http.StatusForbidden || got.scoped || got.firstSet {
+			t.Fatalf("an empty list must abort with 403, got %+v", got)
+		}
+	})
+
+	t.Run("phase without tutors (ErrNoRows) grants full access", func(t *testing.T) {
+		got := runTeamsScoping(t, editor, &fakeTeamsResolver{err: pgx.ErrNoRows})
+		if got.code != http.StatusOK || got.scoped || got.firstSet {
+			t.Fatalf("ErrNoRows must bypass unscoped, got %+v", got)
+		}
+	})
+
+	t.Run("editor who is not a tutor is denied", func(t *testing.T) {
+		got := runTeamsScoping(t, editor, &fakeTeamsResolver{err: fmt.Errorf("lookup: %w", ErrNotATutor)})
+		if got.code != http.StatusForbidden || got.scoped {
+			t.Fatalf("ErrNotATutor must abort with 403, got %+v", got)
+		}
+	})
+
+	t.Run("resolver error fails closed", func(t *testing.T) {
+		got := runTeamsScoping(t, editor, &fakeTeamsResolver{err: errors.New("db down")})
+		if got.code != http.StatusInternalServerError || got.scoped {
+			t.Fatalf("resolver error must fail closed with 500, got %+v", got)
+		}
+	})
+
+	t.Run("lecturer bypasses without a lookup", func(t *testing.T) {
+		r := &fakeTeamsResolver{teamIDs: []uuid.UUID{teamA}}
+		got := runTeamsScoping(t, &TokenUser{IsEditor: true, IsLecturer: true, UniversityLogin: "ab12cde"}, r)
+		if got.code != http.StatusOK || got.scoped || r.called {
+			t.Fatalf("lecturer must not be scoped, got %+v called=%v", got, r.called)
+		}
+	})
+
+	// The returned slice is a copy, so a handler cannot rewrite the scope of a later one.
+	t.Run("handlers get a copy of the scope", func(t *testing.T) {
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		var second []uuid.UUID
+		router.GET("/course_phase/:coursePhaseID", func(c *gin.Context) {
+			SetTokenUser(c, *editor)
+		}, TutorTeamsScopingMiddleware(&fakeTeamsResolver{teamIDs: []uuid.UUID{teamA, teamB}}), func(c *gin.Context) {
+			first, _ := GetTutorTeamIDs(c)
+			first[0] = uuid.Nil
+			second, _ = GetTutorTeamIDs(c)
+			c.Status(http.StatusOK)
+		})
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/course_phase/"+uuid.New().String(), nil))
+		if len(second) != 2 || second[0] != teamA {
+			t.Fatalf("expected an unchanged scope, got %v", second)
+		}
+	})
+}
+
+// The single-team middleware must keep its contract on top of the multi-team one.
+func TestTutorScopingMiddleware_ExposesTheTeamAsAList(t *testing.T) {
+	team := uuid.New()
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	var (
+		teamIDs []uuid.UUID
+		scoped  bool
+	)
+	router.GET("/course_phase/:coursePhaseID", func(c *gin.Context) {
+		SetTokenUser(c, TokenUser{IsEditor: true, UniversityLogin: "ab12cde"})
+	}, TutorScopingMiddleware(&fakeResolver{teamID: team}), func(c *gin.Context) {
+		teamIDs, scoped = GetTutorTeamIDs(c)
+		c.Status(http.StatusOK)
+	})
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/course_phase/"+uuid.New().String(), nil))
+	if !scoped || len(teamIDs) != 1 || teamIDs[0] != team {
+		t.Fatalf("expected [%v], got %v (scoped=%v)", team, teamIDs, scoped)
+	}
+}
+
+func TestTutorTeamsScopingMiddleware_NilResolverPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatalf("expected panic on nil resolver")
+		}
+	}()
+	TutorTeamsScopingMiddleware(nil)
+}

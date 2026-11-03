@@ -37,18 +37,21 @@ Install via your Go module tooling (module path: github.com/prompt-edu/prompt-sd
 
 ## Tutor team scoping
 
-A tutor is a course editor recorded as responsible for exactly one team of a course phase. The
+A tutor is a course editor recorded as responsible for one or more teams of a course phase. The
 `tutorscope` package owns that access control for every phase service that models teams, so all of
 them behave the same way. A module that consumes a team with tutor input does not have to know which
 phase produced it.
 
-- `tutorscope.Middleware(resolver)` resolves the tutor's team onto the request. Handlers narrow their
-  responses with `tutorscope.TeamID(c)`. Once the phase has tutors it fails **closed**: an editor who
-  is none of them, including one whose token carries no university login, is denied with 403. In a
-  phase without tutors editors keep full read access.
+- `tutorscope.TeamsMiddleware(resolver)` resolves every team of the tutor onto the request. Handlers
+  narrow their responses with `tutorscope.TeamIDs(c)`. Once the phase has tutors it fails **closed**:
+  an editor who is none of them, including one whose token carries no university login, is denied
+  with 403. In a phase without tutors editors keep full read access. `tutorscope.Middleware(resolver)`
+  is the same gate for a resolver that returns one team per tutor. `tutorscope.TeamID(c)` is
+  deprecated: for a tutor of several teams it reports only the first, so it shows less, never more.
 - `tutorscope.AuthorizeWrite(c)` resolves the same request into a write scope and fails **closed**.
-  Admins and course lecturers write any team; an editor with a resolved tutor team is confined to it;
-  everyone else is denied. In a phase without tutors editors therefore read every team but write
+  Admins and course lecturers write any team; an editor with exactly one resolved tutor team is
+  confined to it; everyone else is denied, including a tutor of several teams, because a write scope
+  and its guard cover a single team. In a phase without tutors editors therefore read every team but write
   none: reusing the read gate for writes would hand them write access to every team of the phase.
 
 Apply a confined scope inside the mutating statement rather than reading the current team first, so
@@ -84,13 +87,15 @@ they are in this course, which leaves a course lecturer indistinguishable from a
 `AuthorizeWrite` reports that as `ErrCourseRolesNotResolved`. Course lecturers are unaffected by
 dropping it: they are admitted through `CourseLecturer`.
 
-Supply the tutor lookup either by implementing `tutorscope.Resolver` over your own queries, or with
-`tutorscope.NewPgxResolver(pool)` against a `tutor` table with the canonical shape documented on that
-constructor. Store logins as `tutorscope.NormalizeLogin` returns them, and store `NULL` rather than
+Supply the tutor lookup either by implementing `tutorscope.TeamsResolver` (or the single-team
+`tutorscope.Resolver`) over your own queries, or with `tutorscope.NewPgxTeamsResolver(pool)` (or
+`tutorscope.NewPgxResolver(pool)`) against a `tutor` table with the canonical shape documented on
+those constructors. The teams resolver also reads a table or view with one row per tutor and team. Store logins as `tutorscope.NormalizeLogin` returns them, and store `NULL` rather than
 the empty string for a tutor without a login.
 
 A custom resolver answers a login that belongs to no tutor with `tutorscope.ErrNotATutor` when the
-phase has tutors, and with `pgx.ErrNoRows` when it has none. It receives an empty login for a token
+phase has tutors, and with `pgx.ErrNoRows` when it has none. A teams resolver that returns an empty
+list is treated like `ErrNotATutor`. It receives an empty login for a token
 without one and must never match it to a row. A resolver that only returns `pgx.ErrNoRows` keeps the
 old fail-open reads.
 

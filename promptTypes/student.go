@@ -8,20 +8,12 @@ import (
 // This type extends the base Person type with student-specific fields required for course management,
 // academic tracking, and administrative purposes.
 type Student struct {
-	// Person contains the basic identity information (ID, FirstName, LastName).
+	// Person contains the basic identity information (ID, FirstName, LastName, Email, UniversityLogin).
 	Person
-
-	// Email is the student's contact email address, must be a valid email format.
-	// This is used for notifications, communications, and account recovery.
-	Email string `json:"email" binding:"email"`
 
 	// MatriculationNumber is the student's unique university identification number.
 	// This number is assigned by the university and remains constant throughout the student's enrollment.
 	MatriculationNumber string `json:"matriculationNumber" binding:"matriculationNumber"`
-
-	// UniversityLogin is the student's username for university systems and services.
-	// This login is typically used for accessing library, computing resources, and other university platforms.
-	UniversityLogin string `json:"universityLogin" binding:"universityLogin"`
 
 	// HasUniversityAccount indicates whether the student has been granted access to university systems.
 	// This flag helps determine what services and resources the student can access.

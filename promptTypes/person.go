@@ -15,4 +15,11 @@ type Person struct {
 
 	// LastName stores the last name as provided during initial application or profile updates.
 	LastName string `json:"lastName"`
+
+	// Email is the person's contact email address. It is empty when the source does not provide it.
+	Email string `json:"email" binding:"omitempty,email"`
+
+	// UniversityLogin is the person's username for university systems and services.
+	// It is empty when the source does not provide it.
+	UniversityLogin string `json:"universityLogin" binding:"omitempty,universityLogin"`
 }

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,6 +20,48 @@ func TestParseKeysSkipsEmptyAndSupportsRotation(t *testing.T) {
 	assert.NotContains(t, keys, "empty")
 	assert.NotContains(t, keys, "broken")
 	assert.NotContains(t, keys, "")
+}
+
+func TestParseKeysWarnsWithoutLoggingKeys(t *testing.T) {
+	hook := logtest.NewGlobal()
+	defer hook.Reset()
+
+	ParseKeys("interview=abc, :orphan, empty:, assessment:shared, matching:shared, interview:old, interview:old, ")
+
+	var messages []string
+	for _, entry := range hook.AllEntries() {
+		require.Equal(t, log.WarnLevel, entry.Level)
+		messages = append(messages, entry.Message)
+	}
+	require.Equal(t, []string{
+		"serviceAuth: skipping entry 1, which is not in the form service:key",
+		"serviceAuth: skipping entry 2, which names no service",
+		`serviceAuth: skipping entry 3 for service "empty", which has an empty key`,
+		`serviceAuth: services "assessment" and "matching" share a key, so either can authenticate as the other`,
+	}, messages, "a key repeated under the same service and a trailing comma are not warned about")
+	for _, message := range messages {
+		for _, secret := range []string{"abc", "orphan", "shared", "old"} {
+			assert.NotContains(t, message, secret)
+		}
+	}
+}
+
+func TestParseKeysDoesNotWarnAboutAnEmptyConfiguration(t *testing.T) {
+	hook := logtest.NewGlobal()
+	defer hook.Reset()
+
+	assert.Empty(t, ParseKeys(""))
+	assert.Empty(t, hook.AllEntries())
+}
+
+func TestServiceNameReportsAMissingMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	service, ok := ServiceName(c)
+
+	assert.False(t, ok)
+	assert.Empty(t, service)
 }
 
 func TestMatchesAnyKey(t *testing.T) {
@@ -34,7 +78,9 @@ func TestMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.GET("/", Middleware(ParseKeys("interview:sekret"), "X-Service", "X-Token"), func(c *gin.Context) {
-		c.String(http.StatusOK, ServiceName(c)+c.GetHeader("X-Token"))
+		service, ok := ServiceName(c)
+		require.True(t, ok)
+		c.String(http.StatusOK, service+c.GetHeader("X-Token"))
 	})
 
 	for _, tt := range []struct {

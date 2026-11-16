@@ -34,7 +34,7 @@ Install via your Go module tooling (module path: github.com/prompt-edu/prompt-sd
 - Custom roles supported via a prefix provided by Core; any additional role names can be checked against that prefix
 - The middleware verifies standard OIDC fields and attaches a token user to the request context
 - Missing or invalid credentials are rejected with 401; an authenticated user without an allowed role is rejected with 403
-- Service-to-service routes use `serviceAuth`: `ParseKeys` reads per-service shared secrets (`service1:key1,service2:key2`, a service may repeat for key rotation), `Middleware` checks a service-name and a token header in constant time, and `ServiceName` returns the authenticated service
+- Service-to-service routes use `serviceAuth`: `ParseKeys` reads per-service shared secrets (`service1:key1,service2:key2`, a service may repeat for key rotation), `Middleware` checks a service-name and a token header in constant time, and `ServiceName` returns the authenticated service and whether `Middleware` set one. `ParseKeys` warns about every entry it drops and every key listed under two services, without logging the key
 
 ## Tutor team scoping
 

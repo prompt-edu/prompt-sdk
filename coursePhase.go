@@ -13,6 +13,11 @@ import (
 	"github.com/prompt-edu/prompt-sdk/utils"
 )
 
+// maxCoursePhaseBytes caps the decoded answer. Core accepts course phase updates up to 25 MiB
+// because the shared editor embeds pasted images as base64, so this leaves headroom for the
+// indented JSON core answers with.
+const maxCoursePhaseBytes = 32 << 20
+
 // FetchCoursePhase reads a course phase from core with the caller's token, so core decides whether
 // the caller may see it. Any answer other than 200 is an error. Without lecturer or editor access,
 // core returns RestrictedData as {}, so don't read phase config from it with a student token.
@@ -31,7 +36,7 @@ func FetchCoursePhase(ctx context.Context, coreURL, authHeader string, coursePha
 		return promptTypes.CoursePhase{}, fmt.Errorf("core answered %d for course phase %s", resp.StatusCode, coursePhaseID)
 	}
 	var coursePhase promptTypes.CoursePhase
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&coursePhase); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxCoursePhaseBytes)).Decode(&coursePhase); err != nil {
 		return promptTypes.CoursePhase{}, fmt.Errorf("decode course phase %s: %w", coursePhaseID, err)
 	}
 	return coursePhase, nil

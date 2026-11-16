@@ -2,8 +2,10 @@ package promptSDK
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -28,6 +30,24 @@ func TestFetchCoursePhase(t *testing.T) {
 	assert.Equal(t, phaseID, phase.ID)
 	assert.Equal(t, "Assessment", phase.CoursePhaseTypeName)
 	assert.Equal(t, "value", phase.RestrictedData["key"])
+}
+
+// A mail template with a pasted image pushes restrictedData past a few MiB.
+func TestFetchCoursePhaseDecodesALargePhase(t *testing.T) {
+	phaseID := uuid.New()
+	template := strings.Repeat("a", 4<<20)
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":             phaseID,
+			"restrictedData": map[string]any{"resultsReleasedMail": template},
+		})
+	}))
+	defer core.Close()
+
+	phase, err := FetchCoursePhase(context.Background(), core.URL, "Bearer token", phaseID)
+
+	require.NoError(t, err)
+	assert.Equal(t, template, phase.RestrictedData["resultsReleasedMail"])
 }
 
 func TestFetchCoursePhaseFailsOnAnythingButOK(t *testing.T) {

@@ -93,6 +93,14 @@ func TestTutorScopingMiddleware(t *testing.T) {
 		}
 	})
 
+	t.Run("nil team fails closed", func(t *testing.T) {
+		r := &fakeResolver{teamID: uuid.Nil}
+		code, _, scoped := runScoping(t, &TokenUser{IsEditor: true, UniversityLogin: "ab12cde"}, phase, r)
+		if code != http.StatusForbidden || scoped {
+			t.Fatalf("the nil team must abort with 403, got code=%d scoped=%v", code, scoped)
+		}
+	})
+
 	t.Run("resolver error fails closed", func(t *testing.T) {
 		r := &fakeResolver{err: errors.New("db down")}
 		code, _, scoped := runScoping(t, &TokenUser{IsEditor: true, UniversityLogin: "ab12cde"}, phase, r)
@@ -217,6 +225,17 @@ func TestTutorTeamsScopingMiddleware(t *testing.T) {
 		got := runTeamsScoping(t, editor, &fakeTeamsResolver{teamIDs: []uuid.UUID{}})
 		if got.code != http.StatusForbidden || got.scoped || got.firstSet {
 			t.Fatalf("an empty list must abort with 403, got %+v", got)
+		}
+	})
+
+	// uuid.Nil is what a resolver yields for a NULL team, and Guard reads it as "no
+	// access was granted", so a tutor must never be scoped to it.
+	t.Run("team list with the nil team fails closed", func(t *testing.T) {
+		for _, teamIDs := range [][]uuid.UUID{{uuid.Nil}, {teamA, uuid.Nil}} {
+			got := runTeamsScoping(t, editor, &fakeTeamsResolver{teamIDs: teamIDs})
+			if got.code != http.StatusForbidden || got.scoped || got.firstSet {
+				t.Fatalf("%v must abort with 403, got %+v", teamIDs, got)
+			}
 		}
 	})
 

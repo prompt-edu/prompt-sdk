@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -44,8 +45,8 @@ type TutorTeamResolver interface {
 // TutorTeamsResolver resolves every team a tutor is assigned to in a course phase.
 // The error contract matches TutorTeamResolver: pgx.ErrNoRows means the phase has no
 // tutors, ErrNotATutor means it has tutors and the login is none of them. An empty
-// slice with a nil error is treated like ErrNotATutor, so a resolver that finds no
-// team can never widen access.
+// slice, or one that contains uuid.Nil, with a nil error is treated like
+// ErrNotATutor, so a resolver that finds no team can never widen access.
 type TutorTeamsResolver interface {
 	ResolveTutorTeams(ctx context.Context, coursePhaseID uuid.UUID, universityLogin string) ([]uuid.UUID, error)
 }
@@ -77,7 +78,7 @@ func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
 // to and stores them in the gin context for handlers to scope their responses. Only
 // CourseEditor users are checked; lecturers and admins pass through untouched. A
 // resolved team list scopes the editor to those teams, ErrNotATutor or an empty
-// list aborts with 403, and pgx.ErrNoRows means the phase has no tutors, so the
+// list or one containing uuid.Nil aborts with 403, and pgx.ErrNoRows means the phase has no tutors, so the
 // editor passes through unscoped. Any other resolver error fails closed with 500.
 func TutorTeamsScopingMiddleware(resolver TutorTeamsResolver) gin.HandlerFunc {
 	if resolver == nil {
@@ -105,7 +106,9 @@ func TutorTeamsScopingMiddleware(resolver TutorTeamsResolver) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if errors.Is(err, ErrNotATutor) || (err == nil && len(teamIDs) == 0) {
+		// uuid.Nil is no team: a NULL team_id scans into it, and Guard reads it as
+		// "no access was granted".
+		if errors.Is(err, ErrNotATutor) || (err == nil && (len(teamIDs) == 0 || slices.Contains(teamIDs, uuid.Nil))) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access restricted to the tutors of this course phase"})
 			return
 		}

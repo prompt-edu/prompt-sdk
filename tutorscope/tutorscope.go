@@ -37,8 +37,8 @@ import (
 type Resolver = keycloakTokenVerifier.TutorTeamResolver
 
 // TeamsResolver resolves every team a tutor is assigned to. It follows the error
-// contract of Resolver; an empty list with a nil error fails closed like
-// ErrNotATutor.
+// contract of Resolver; an empty list, or one that contains uuid.Nil, with a nil
+// error fails closed like ErrNotATutor.
 type TeamsResolver = keycloakTokenVerifier.TutorTeamsResolver
 
 // ErrNotATutor is what a Resolver returns when the course phase has tutors and the
@@ -67,7 +67,8 @@ func Middleware(resolver Resolver) gin.HandlerFunc {
 
 // TeamsMiddleware is Middleware for tutors who can be assigned to several teams: it
 // scopes an editor to every team the resolver returns. The read rules are the same,
-// and an empty team list is denied with 403 like an editor who is no tutor.
+// and an empty team list, or one that contains uuid.Nil, is denied with 403 like an
+// editor who is no tutor.
 func TeamsMiddleware(resolver TeamsResolver) gin.HandlerFunc {
 	return keycloakTokenVerifier.TutorTeamsScopingMiddleware(resolver)
 }

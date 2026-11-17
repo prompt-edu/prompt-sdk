@@ -90,12 +90,14 @@ dropping it: they are admitted through `CourseLecturer`.
 Supply the tutor lookup either by implementing `tutorscope.TeamsResolver` (or the single-team
 `tutorscope.Resolver`) over your own queries, or with `tutorscope.NewPgxTeamsResolver(pool)` (or
 `tutorscope.NewPgxResolver(pool)`) against a `tutor` table with the canonical shape documented on
-those constructors. The teams resolver also reads a table or view with one row per tutor and team. Store logins as `tutorscope.NormalizeLogin` returns them, and store `NULL` rather than
+those constructors. The teams resolver also reads a table or view with one row per tutor and team, and skips rows
+whose `team_id` is `NULL`, as a `LEFT JOIN` view produces them. Store logins as `tutorscope.NormalizeLogin` returns them, and store `NULL` rather than
 the empty string for a tutor without a login.
 
 A custom resolver answers a login that belongs to no tutor with `tutorscope.ErrNotATutor` when the
 phase has tutors, and with `pgx.ErrNoRows` when it has none. A teams resolver that returns an empty
-list is treated like `ErrNotATutor`. It receives an empty login for a token
+list, or a list that contains `uuid.Nil`, is treated like `ErrNotATutor`, and so is a single-team
+resolver that returns `uuid.Nil`. It receives an empty login for a token
 without one and must never match it to a row. A resolver that only returns `pgx.ErrNoRows` keeps the
 old fail-open reads.
 

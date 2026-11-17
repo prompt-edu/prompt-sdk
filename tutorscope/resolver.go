@@ -124,6 +124,9 @@ type pgxTeamsResolver struct {
 //	    ON tutor (course_phase_id, university_login, team_id)
 //	    WHERE university_login IS NOT NULL;
 //
+// Rows with a NULL team_id, as a LEFT JOIN view produces them, count as no team, so
+// a login with only such rows is not a tutor.
+//
 // Teams are returned in a stable order. The storage rules of NewPgxResolver apply:
 // store logins as NormalizeLogin returns them and NULL, never the empty string, for
 // a tutor without a login.
@@ -144,7 +147,7 @@ func NewPgxTeamsResolver(pool *pgxpool.Pool, opts ...ResolverOption) TeamsResolv
 	resolver := &pgxTeamsResolver{pool: pool, table: config.table}
 	resolver.query = fmt.Sprintf(
 		`SELECT ARRAY(SELECT DISTINCT team_id FROM %[1]s
-		              WHERE course_phase_id = $1 AND university_login = $2
+		              WHERE course_phase_id = $1 AND university_login = $2 AND team_id IS NOT NULL
 		              ORDER BY team_id),
 		        EXISTS (SELECT 1 FROM %[1]s WHERE course_phase_id = $1)`,
 		pgx.Identifier{resolver.table}.Sanitize(),

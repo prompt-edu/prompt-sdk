@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -313,6 +314,38 @@ func TestResolveTutorTeamsAgainstPostgres(t *testing.T) {
 		teamIDs, err := custom.ResolveTutorTeams(ctx, phase, "pl12lea")
 		if err != nil || len(teamIDs) != 2 {
 			t.Fatalf("expected two teams, got %v (err=%v)", teamIDs, err)
+		}
+	})
+
+	// A LEFT JOIN view yields a row with a NULL team_id for a login without a team.
+	// pgx scans a NULL array element into uuid.Nil, which must never count as a team.
+	t.Run("ignores rows without a team", func(t *testing.T) {
+		if _, err := pool.Exec(ctx, `
+CREATE TABLE staff (course_phase_id uuid NOT NULL, university_login text NOT NULL);
+CREATE VIEW staff_tutor_team AS
+    SELECT s.course_phase_id, s.university_login, t.team_id
+    FROM staff s
+    LEFT JOIN tutor t ON t.course_phase_id = s.course_phase_id AND t.university_login = s.university_login;`); err != nil {
+			t.Fatalf("could not create the view: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO staff (course_phase_id, university_login) VALUES ($1, 'nu12tea'), ($1, 'pl12lea')`, phase); err != nil {
+			t.Fatalf("could not seed the staff: %v", err)
+		}
+
+		custom := NewPgxTeamsResolver(pool, WithTable("staff_tutor_team"))
+		teamIDs, err := custom.ResolveTutorTeams(ctx, phase, "nu12tea")
+		if !errors.Is(err, ErrNotATutor) {
+			t.Fatalf("expected ErrNotATutor, got %v (err=%v)", teamIDs, err)
+		}
+
+		teamIDs, err = custom.ResolveTutorTeams(ctx, phase, "pl12lea")
+		if err != nil || len(teamIDs) != 2 || slices.Contains(teamIDs, uuid.Nil) {
+			t.Fatalf("expected two teams, got %v (err=%v)", teamIDs, err)
+		}
+
+		// The single-team resolver already reads a NULL team as no team.
+		if _, err := NewPgxResolver(pool, WithTable("staff_tutor_team")).ResolveTutorTeam(ctx, phase, "nu12tea"); !errors.Is(err, ErrNotATutor) {
+			t.Fatalf("single-team resolver: expected ErrNotATutor, got %v", err)
 		}
 	})
 }

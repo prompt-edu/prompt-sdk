@@ -40,6 +40,24 @@ func authorizeWithoutCourseRoles(t *testing.T, user *keycloakTokenVerifier.Token
 
 func authorize(t *testing.T, user *keycloakTokenVerifier.TokenUser, resolver Resolver, courseRolesResolved bool) (Access, error) {
 	t.Helper()
+	var scoping gin.HandlerFunc
+	if resolver != nil {
+		scoping = Middleware(resolver)
+	}
+	return authorizeBehind(t, user, scoping, courseRolesResolved)
+}
+
+type stubTeamsResolver struct {
+	teamIDs []uuid.UUID
+	err     error
+}
+
+func (s stubTeamsResolver) ResolveTutorTeams(context.Context, uuid.UUID, string) ([]uuid.UUID, error) {
+	return s.teamIDs, s.err
+}
+
+func authorizeBehind(t *testing.T, user *keycloakTokenVerifier.TokenUser, scoping gin.HandlerFunc, courseRolesResolved bool) (Access, error) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	var (
@@ -55,8 +73,8 @@ func authorize(t *testing.T, user *keycloakTokenVerifier.TokenUser, resolver Res
 			c.Set(keycloakTokenVerifier.CourseRolesResolvedKey, true)
 		}
 	}}
-	if resolver != nil {
-		handlers = append(handlers, Middleware(resolver))
+	if scoping != nil {
+		handlers = append(handlers, scoping)
 	}
 	handlers = append(handlers, func(c *gin.Context) {
 		access, gotErr = AuthorizeWrite(c)
@@ -207,6 +225,36 @@ func TestAuthorizeWrite(t *testing.T) {
 			t.Fatalf("expected a denial")
 		}
 		assertGrantsNothing(t, access, team)
+	})
+}
+
+func TestAuthorizeWriteBehindTeamsMiddleware(t *testing.T) {
+	team := uuid.New()
+	other := uuid.New()
+	tutor := &keycloakTokenVerifier.TokenUser{IsEditor: true, UniversityLogin: "ab12cde"}
+
+	t.Run("tutor of one team is confined to it", func(t *testing.T) {
+		access, err := authorizeBehind(t, tutor, TeamsMiddleware(stubTeamsResolver{teamIDs: []uuid.UUID{team}}), true)
+		if err != nil || !access.Confined || access.TeamID != team {
+			t.Fatalf("expected confinement to %v, got access=%+v err=%v", team, access, err)
+		}
+	})
+
+	// A single-team guard cannot express several teams, so the write is refused
+	// rather than confined to whichever team happened to resolve first.
+	t.Run("tutor of several teams is denied", func(t *testing.T) {
+		access, err := authorizeBehind(t, tutor, TeamsMiddleware(stubTeamsResolver{teamIDs: []uuid.UUID{team, other}}), true)
+		if !errors.Is(err, ErrWriteDenied) {
+			t.Fatalf("expected ErrWriteDenied, got %v", err)
+		}
+		assertGrantsNothing(t, access, team)
+	})
+
+	t.Run("lecturer still writes any team", func(t *testing.T) {
+		access, err := authorizeBehind(t, &keycloakTokenVerifier.TokenUser{IsLecturer: true}, TeamsMiddleware(stubTeamsResolver{teamIDs: []uuid.UUID{team, other}}), true)
+		if err != nil || !access.Unrestricted() {
+			t.Fatalf("lecturer must be unrestricted, got access=%+v err=%v", access, err)
+		}
 	})
 }
 

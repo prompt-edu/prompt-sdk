@@ -34,10 +34,30 @@ type TutorTeamResolver = keycloakTokenVerifier.TutorTeamResolver
 // TutorTeamIDKey is the gin context key under which the resolved tutor team ID is stored.
 const TutorTeamIDKey = keycloakTokenVerifier.TutorTeamIDKey
 
+// TutorTeamsResolver is implemented by services whose tutors can be assigned to
+// several teams of a course phase.
+type TutorTeamsResolver = keycloakTokenVerifier.TutorTeamsResolver
+
+// TutorTeamIDsKey is the gin context key under which every resolved tutor team ID is stored.
+const TutorTeamIDsKey = keycloakTokenVerifier.TutorTeamIDsKey
+
 func TutorScopingMiddleware(resolver TutorTeamResolver) gin.HandlerFunc {
 	return keycloakTokenVerifier.TutorScopingMiddleware(resolver)
 }
 
+// TutorTeamsScopingMiddleware scopes a tutor to every team the resolver returns.
+func TutorTeamsScopingMiddleware(resolver TutorTeamsResolver) gin.HandlerFunc {
+	return keycloakTokenVerifier.TutorTeamsScopingMiddleware(resolver)
+}
+
+// GetTutorTeamID returns the tutor's first scoped team.
+//
+// Deprecated: a tutor can be assigned to several teams. Use GetTutorTeamIDs.
 func GetTutorTeamID(c *gin.Context) (uuid.UUID, bool) {
 	return keycloakTokenVerifier.GetTutorTeamID(c)
+}
+
+// GetTutorTeamIDs returns every team the tutor is scoped to.
+func GetTutorTeamIDs(c *gin.Context) ([]uuid.UUID, bool) {
+	return keycloakTokenVerifier.GetTutorTeamIDs(c)
 }

@@ -109,6 +109,26 @@ old fail-open reads.
 - Merge resolved data into metadata maps for consistent downstream usage
 - Read a course phase from core with `FetchCoursePhase` (its course, name and phase type) instead of calling core's route directly
 
+## AI server
+
+The `ai` package is the contract between a phase service and the AI server, which is the only
+component that talks to the model provider. The AI server reads the same constants and types.
+
+- Every model call carries the user's Keycloak token, the phase service's name and key from the AI
+  server's `AI_SERVICE_KEYS` (`X-Prompt-Service`, `X-Prompt-Service-Token`), the course phase's
+  own Logos key (`X-Prompt-Provider-Key`), and an `ai.Call` with the feature
+  (`<service>.<feature>`, which sets the retention), the optional template and template version,
+  and the course participations the call is about (at most 100)
+- `ai.NewClientFromEnv(serviceName)` reads `AI_ENABLED`, `SERVER_AI_HOST` and `AI_SERVICE_KEY`. It
+  returns nil while AI is off or misconfigured, so a phase hides its AI surfaces on a nil client and
+  while `Healthy` reports false
+- `ChatCompletion` sends an OpenAI chat completion and returns the answer unread, so a streamed
+  answer passes through; `ai.CallID` reads the recorded call from it. `Transport` and `BaseURL` serve
+  a stock OpenAI client instead, and `SetHeaders` an `httputil.ReverseProxy`
+- `PostEvent` reports what the user did with the output (`shown`, `accepted`, `edited` with an edit
+  distance, `rejected`), naming what it was applied to as `targetId`
+- A call or event the AI server would refuse fails before it is sent
+
 ## Standard endpoints
 
 - Config endpoint: uniform GET endpoint to report whether required configuration elements are present for a course phase

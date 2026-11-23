@@ -3,6 +3,8 @@ package promptTypes
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/google/uuid"
 )
 
 // Application answer type constants used to distinguish between different answer formats.
@@ -20,7 +22,14 @@ type AnswersMultiSelect struct {
 	Type string `json:"type"`
 	// OrderNum indicates the display order of this question in the application form.
 	OrderNum int `json:"order_num"`
-	// Key is the unique identifier for this question within the application.
+	// QuestionID identifies the application question this answer belongs to. Reference a
+	// question by this id. It is uuid.Nil for answers from a core version that does not
+	// export question ids yet.
+	QuestionID uuid.UUID `json:"questionID"`
+	// Title is the question's title as shown in the application form, for display.
+	Title string `json:"title"`
+	// Key is the free-text access key a lecturer typed for this question. Prefer
+	// QuestionID: core stops exporting the key once every phase references questions by id.
 	Key string `json:"key"`
 	// Answer contains the list of selected options from the available choices.
 	Answer []string `json:"answer"`
@@ -33,7 +42,14 @@ type AnswersText struct {
 	Type string `json:"type"`
 	// OrderNum indicates the display order of this question in the application form.
 	OrderNum int `json:"order_num"`
-	// Key is the unique identifier for this question within the application.
+	// QuestionID identifies the application question this answer belongs to. Reference a
+	// question by this id. It is uuid.Nil for answers from a core version that does not
+	// export question ids yet.
+	QuestionID uuid.UUID `json:"questionID"`
+	// Title is the question's title as shown in the application form, for display.
+	Title string `json:"title"`
+	// Key is the free-text access key a lecturer typed for this question. Prefer
+	// QuestionID: core stops exporting the key once every phase references questions by id.
 	Key string `json:"key"`
 	// Answer contains the student's written response to the question.
 	Answer string `json:"answer"`
@@ -42,10 +58,12 @@ type AnswersText struct {
 // rawAnswer is the intermediate struct used for unmarshaling the raw JSON.
 // This internal type handles the polymorphic nature of answer data during JSON parsing.
 type rawAnswer struct {
-	Type     string      `json:"type"`
-	OrderNum int         `json:"order_num"`
-	Answer   interface{} `json:"answer"` // can be a string or list of strings
-	Key      string      `json:"key"`
+	Type       string      `json:"type"`
+	OrderNum   int         `json:"order_num"`
+	Answer     interface{} `json:"answer"` // can be a string or list of strings
+	QuestionID uuid.UUID   `json:"questionID"`
+	Title      string      `json:"title"`
+	Key        string      `json:"key"`
 }
 
 // ReadApplicationAnswersFromMetaData parses application answers from metadata.
@@ -92,10 +110,12 @@ func ReadApplicationAnswersFromMetaData(data interface{}) ([]AnswersText, []Answ
 				stringArr = append(stringArr, s)
 			}
 			multiAnswers = append(multiAnswers, AnswersMultiSelect{
-				Type:     ra.Type,
-				OrderNum: ra.OrderNum,
-				Key:      ra.Key,
-				Answer:   stringArr,
+				Type:       ra.Type,
+				OrderNum:   ra.OrderNum,
+				QuestionID: ra.QuestionID,
+				Title:      ra.Title,
+				Key:        ra.Key,
+				Answer:     stringArr,
 			})
 
 		case TypeText:
@@ -105,10 +125,12 @@ func ReadApplicationAnswersFromMetaData(data interface{}) ([]AnswersText, []Answ
 				return nil, nil, fmt.Errorf("text answer was not a string: %v", ra.Answer)
 			}
 			textAnswers = append(textAnswers, AnswersText{
-				Type:     ra.Type,
-				OrderNum: ra.OrderNum,
-				Key:      ra.Key,
-				Answer:   s,
+				Type:       ra.Type,
+				OrderNum:   ra.OrderNum,
+				QuestionID: ra.QuestionID,
+				Title:      ra.Title,
+				Key:        ra.Key,
+				Answer:     s,
 			})
 
 		default:

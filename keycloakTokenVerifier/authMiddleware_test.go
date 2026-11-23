@@ -150,6 +150,7 @@ func TestMatchesCustomRole(t *testing.T) {
 func TestAuthorizationMiddleware_StatusCodes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	const roleMapping = `{"courseLecturerRole":"WS24-Lecturer","courseEditorRole":"WS24-Editor","customRolePrefix":"WS24-cg-"}`
+	const orgRoleMapping = `{"courseLecturerRole":"WS24-Lecturer","courseEditorRole":"WS24-Editor","customRolePrefix":"WS24-cg-","orgAdminRoles":["org-ase-Admin"]}`
 
 	tests := []struct {
 		name         string
@@ -164,6 +165,10 @@ func TestAuthorizationMiddleware_StatusCodes(t *testing.T) {
 		{"lecturer route grants course lecturer", []string{CourseLecturer}, []string{"WS24-Lecturer"}, http.StatusOK, roleMapping, http.StatusOK},
 		{"lecturer route forbids non-lecturer", []string{CourseLecturer}, nil, http.StatusOK, roleMapping, http.StatusForbidden},
 		{"lecturer route keeps 401 when core rejects the token", []string{CourseLecturer}, nil, http.StatusUnauthorized, "", http.StatusUnauthorized},
+		{"lecturer route grants an admin of the course's org", []string{CourseLecturer}, []string{"org-ase-Admin"}, http.StatusOK, orgRoleMapping, http.StatusOK},
+		{"lecturer route forbids an admin of another org", []string{CourseLecturer}, []string{"org-aet-Admin"}, http.StatusOK, orgRoleMapping, http.StatusForbidden},
+		{"lecturer route forbids an org admin when core sends no org roles", []string{CourseLecturer}, []string{"org-ase-Admin"}, http.StatusOK, roleMapping, http.StatusForbidden},
+		{"editor route forbids an admin of the course's org", []string{CourseEditor}, []string{"org-ase-Admin"}, http.StatusOK, orgRoleMapping, http.StatusForbidden},
 		{"student route grants in-phase student", []string{CourseStudent}, nil, http.StatusOK, `{"isStudentOfCoursePhase":true}`, http.StatusOK},
 		// Core returns 200 for any student of the course, but a student who is not in
 		// this phase (e.g. an applicant or a student of another phase) must be denied.

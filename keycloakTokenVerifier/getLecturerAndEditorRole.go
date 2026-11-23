@@ -3,6 +3,7 @@ package keycloakTokenVerifier
 import (
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -66,8 +67,10 @@ func getLecturerAndEditorRole() gin.HandlerFunc {
 		}
 		userRoles := tokenUser.Roles
 
-		// filter out the roles relevant for the current course phase
-		isLecturer := userRoles[tokenMapping.CourseLecturerRole]
+		// filter out the roles relevant for the current course phase; an Admin of the course's org
+		// is Lecturer-equivalent on it
+		isLecturer := userRoles[tokenMapping.CourseLecturerRole] ||
+			slices.ContainsFunc(tokenMapping.OrgAdminRoles, func(role string) bool { return userRoles[role] })
 		isEditor := userRoles[tokenMapping.CourseEditorRole]
 
 		// DEPRECATED: Keep this for backwards compatibility
